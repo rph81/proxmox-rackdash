@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>rackdash</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>📊</text></svg>">
+</head>
+<body>
+
+<nav id="nav" aria-label="Pages"></nav>
+
+<main id="main">
+  <header id="header">
+    <span class="dot" id="conn-dot"></span>
+    <span class="host" id="conn-host">connecting…</span>
+    <span class="tag" id="conn-sub"></span>
+    <span class="spacer"></span>
+    <span class="chip" id="chip-guests"></span>
+    <span class="chip" id="chip-uptime"></span>
+    <span class="clock" id="clock">--:--</span>
+  </header>
+
+  <p class="banner" id="banner" hidden></p>
+
+  <!-- ---------------------------------------------------------- overview -->
+  <section class="page" id="page-overview">
+    <div class="dials" id="overview-dials"></div>
+    <div class="strip" id="overview-strip"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- performance -->
+  <section class="page" id="page-performance" hidden>
+    <div class="cols-3">
+      <div class="panel">
+        <div class="panel-head"><h2>Processor</h2><span class="tag" id="perf-cpu-tag"></span></div>
+        <div class="panel-dial" id="perf-cpu-dial"></div>
+        <div class="kv" id="perf-cpu-kv"></div>
+        <canvas class="spark" id="perf-cpu-chart"></canvas>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Memory</h2><span class="tag" id="perf-mem-tag"></span></div>
+        <div class="panel-dial" id="perf-mem-dial"></div>
+        <div class="kv" id="perf-mem-kv"></div>
+        <canvas class="spark" id="perf-mem-chart"></canvas>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Network</h2><span class="tag" id="perf-net-tag">1 min avg</span></div>
+        <div class="panel-dial" id="perf-net-dial"></div>
+        <div class="kv" id="perf-net-kv"></div>
+        <canvas class="spark" id="perf-net-chart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------- temps -->
+  <section class="page" id="page-temps" hidden>
+    <div class="dials compact" id="temps-dials"></div>
+    <div class="temps-lower">
+      <div class="panel flat">
+        <div class="panel-head"><h2>History</h2><span class="tag" id="temps-range">15 min</span></div>
+        <canvas class="spark tall" id="temps-chart"></canvas>
+      </div>
+      <div class="panel flat" id="temps-fans-panel">
+        <div class="panel-head"><h2>Fans</h2><span class="tag" id="temps-fan-tag"></span></div>
+        <div class="fan-list" id="temps-fans"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------------- vms -->
+  <section class="page" id="page-vms" hidden>
+    <div id="vm-list-view">
+      <div class="list-head">
+        <h2>Virtual machines &amp; containers</h2>
+        <span class="tag" id="vm-count"></span>
+        <span class="spacer"></span>
+        <div class="seg" id="vm-filter">
+          <button type="button" data-filter="all">All</button>
+          <button type="button" data-filter="running">Running</button>
+          <button type="button" data-filter="stopped">Stopped</button>
+        </div>
+      </div>
+      <div class="vm-grid" id="vm-grid"></div>
+    </div>
+
+    <div id="vm-detail-view" hidden>
+      <div class="list-head">
+        <button type="button" class="back" id="vm-back">‹ Back</button>
+        <h2 id="vm-detail-name">—</h2>
+        <span class="tag" id="vm-detail-kind"></span>
+        <span class="tag" id="vm-detail-status"></span>
+        <span class="spacer"></span>
+        <div class="seg" id="vm-timeframe">
+          <button type="button" data-timeframe="hour">Hour</button>
+          <button type="button" data-timeframe="day">Day</button>
+          <button type="button" data-timeframe="week">Week</button>
+        </div>
+      </div>
+      <p class="banner inline" id="vm-detail-error" hidden></p>
+      <div class="vm-detail">
+        <div class="dials compact" id="vm-detail-dials"></div>
+        <div class="vm-detail-charts">
+          <div class="panel flat">
+            <div class="panel-head"><h2>CPU &amp; memory</h2></div>
+            <canvas class="spark" id="vm-chart-cpu"></canvas>
+          </div>
+          <div class="panel flat">
+            <div class="panel-head"><h2>Network</h2><span class="tag" id="vm-net-tag"></span></div>
+            <canvas class="spark" id="vm-chart-net"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- proxmox -->
+  <section class="page" id="page-proxmox" hidden>
+    <div class="cols-3">
+      <div class="panel">
+        <div class="panel-head"><h2>Node</h2><span class="tag" id="pve-node-tag"></span></div>
+        <div class="kv tall" id="pve-node-kv"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Storage</h2><span class="tag" id="pve-storage-tag"></span></div>
+        <div class="bars" id="pve-storage"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Recent tasks</h2><span class="tag" id="pve-tasks-tag"></span></div>
+        <div class="tasks" id="pve-tasks"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- settings -->
+  <section class="page scroll" id="page-settings" hidden>
+    <div class="settings-grid">
+
+      <div class="panel span-all">
+        <div class="panel-head">
+          <h2>Theme</h2>
+          <span class="tag" id="set-theme-tag"></span>
+          <span class="spacer"></span>
+          <span class="hint">Applies across every page</span>
+        </div>
+        <div class="themes" id="set-theme"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Accent</h2></div>
+        <label class="field-label">Accent colour</label>
+        <div class="swatches" id="set-accent"></div>
+        <div class="picker-row">
+          <input type="color" id="set-accent-picker" aria-label="Custom accent colour">
+          <input type="text" id="set-accent-hex" class="hex" maxlength="7" spellcheck="false">
+          <button type="button" id="set-fav-add">Save</button>
+        </div>
+        <label class="field-label">Favourites <span class="hint" id="set-fav-count"></span></label>
+        <div class="swatches" id="set-favorites"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Dials</h2></div>
+        <label class="field-label">Arc colour</label>
+        <div class="seg" id="set-dialcolor">
+          <button type="button" data-dialcolor="threshold">By value</button>
+          <button type="button" data-dialcolor="accent">Accent</button>
+        </div>
+        <label class="field-label">Usage colour stops (%)</label>
+        <div class="stops" id="set-usage-stops"></div>
+        <label class="field-label">Temperature colour stops (°C)</label>
+        <div class="stops" id="set-temp-stops"></div>
+        <div class="row">
+          <div class="field">
+            <label for="set-temp-min">Dial min °C</label>
+            <input type="number" id="set-temp-min" min="-20" max="150" step="1">
+          </div>
+          <div class="field">
+            <label for="set-temp-max">Dial max °C</label>
+            <input type="number" id="set-temp-max" min="-20" max="200" step="1">
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Screen</h2></div>
+        <div class="row">
+          <div class="field">
+            <label for="set-start-page">Start page</label>
+            <select id="set-start-page"></select>
+          </div>
+          <div class="field">
+            <label for="set-rotate">Auto-cycle pages (s)</label>
+            <input type="number" id="set-rotate" min="0" max="3600" step="5">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="set-dim-after">Dim after idle (s)</label>
+            <input type="number" id="set-dim-after" min="0" max="86400" step="30">
+          </div>
+          <div class="field">
+            <label for="set-dim-level">Dim level (%)</label>
+            <input type="number" id="set-dim-level" min="0" max="90" step="5">
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="set-animate"> Animate dials</label>
+        <label class="check"><input type="checkbox" id="set-chart-fill"> Fill charts</label>
+        <label class="check"><input type="checkbox" id="set-clock24"> 24-hour clock</label>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Sources</h2></div>
+        <div class="kv" id="set-sources"></div>
+        <label class="field-label">Temperature sensors</label>
+        <div class="seg wide" id="set-temp-source">
+          <button type="button" data-source="fanctl-selected">Fan curves</button>
+          <button type="button" data-source="all">All</button>
+        </div>
+        <p class="hint">
+          <strong>Fan curves</strong> shows exactly the sensors assigned to a fan
+          in the Commander Pro app, so ticking one there adds it here.
+        </p>
+        <div class="row">
+          <div class="field">
+            <label for="set-link">Link speed (Mbit/s)</label>
+            <input type="number" id="set-link" min="1" max="100000" step="100">
+          </div>
+          <div class="field">
+            <label for="set-pve-interval">Poll interval (s)</label>
+            <input type="number" id="set-pve-interval" min="1" max="60" step="1">
+          </div>
+        </div>
+        <p class="hint">
+          The Proxmox host and API token live in the config file on this Pi and
+          cannot be set from this screen.
+        </p>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<div id="dim" hidden></div>
+<div class="toast" id="toast"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+[Unit]
+Description=rackdash - full-screen kiosk browser
+Documentation=file:/opt/rackdash/README.md
+After=rackdash.service systemd-user-sessions.service
+Wants=rackdash.service
+
+[Service]
+Type=simple
+User=__KIOSK_USER__
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty-force
+StandardOutput=journal
+StandardError=journal
+TTYReset=yes
+TTYVHangup=yes
+
+Environment=XDG_RUNTIME_DIR=/run/user/__KIOSK_UID__
+Environment=HOME=/home/__KIOSK_USER__
+# Chromium's first paint can beat the daemon's first successful poll; the page
+# handles that itself by showing "connecting", so there is nothing to wait for.
+ExecStart=/usr/bin/cage -d -- __BROWSER__ \
+    --kiosk \
+    --app=http://127.0.0.1:__PORT__/?kiosk=1 \
+    --ozone-platform=wayland \
+    --start-fullscreen \
+    --noerrdialogs \
+    --disable-infobars \
+    --disable-session-crashed-bubble \
+    --disable-features=TranslateUI,Translate \
+    --disable-pinch \
+    --overscroll-history-navigation=0 \
+    --check-for-update-interval=31536000 \
+    --touch-events=enabled \
+    --password-store=basic \
+    --user-data-dir=/home/__KIOSK_USER__/.config/rackdash-kiosk
+
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target

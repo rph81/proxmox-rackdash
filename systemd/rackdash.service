@@ -1,0 +1,42 @@
+[Unit]
+Description=rackdash - Proxmox dashboard service
+Documentation=file:/opt/rackdash/README.md
+# The dashboard only reads a remote API, so it is fine for it to start before
+# the network is up: polls fail and retry, and the screen says so.
+After=network.target
+
+# A rack display should never sit in a failed state waiting for a human.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rackdash
+ExecStart=/usr/bin/python3 -m rackdash --config /etc/rackdash/config.json
+Restart=on-failure
+RestartSec=5
+
+# This process talks to an HTTP API and serves a local page. It needs no root,
+# no devices and no write access outside its own config, so it gets none.
+User=rackdash
+Group=rackdash
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes
+UMask=0077
+# The config holds the Proxmox API token and is rewritten from the Settings
+# page, so this one directory is writable and nothing else is.
+ReadWritePaths=/etc/rackdash
+
+[Install]
+WantedBy=multi-user.target
