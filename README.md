@@ -1,4 +1,10 @@
-# rackdash
+# proxmox-rackdash
+
+[![tests](https://github.com/rph81/proxmox-rackdash/actions/workflows/test.yml/badge.svg)](https://github.com/rph81/proxmox-rackdash/actions/workflows/test.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+
+*Package and service name: `rackdash`*
 
 A Proxmox VE dashboard for a rack-mounted touchscreen, built for a **GeeekPi
 7.84" 1280x400** panel in a DeskPi RackMate on a **Raspberry Pi 5**.
@@ -58,7 +64,7 @@ pveum user token add rackdash@pve dash --privsep 0
 ### 2. Install on the Pi
 
 ```bash
-git clone https://github.com/rph81/rackdash && cd rackdash
+git clone https://github.com/rph81/proxmox-rackdash && cd proxmox-rackdash
 sudo ./install.sh \
   --pve https://192.168.1.10:8006 \
   --token-id 'rackdash@pve!dash' \
