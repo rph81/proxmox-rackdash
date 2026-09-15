@@ -40,6 +40,13 @@ THEMES = ("midnight", "deck", "bambu", "nord", "synth", "matrix", "carbon",
 DEFAULT_SERIES = ["#4aa3ff", "#3fb950", "#d29922", "#f85149",
                   "#a371f7", "#39c5cf", "#db6d28", "#db61a2"]
 
+# Background patterns drawn behind the pages. Each is one CSS declaration in
+# web/style.css, drawn in a neutral at low alpha so a single value reads on
+# both dark and light grounds. A pattern is independent of the theme, so
+# switching theme keeps whichever backdrop you picked.
+PATTERNS = ("none", "dots", "grid", "blueprint", "plate", "hatch", "crosshair",
+            "hex", "circuit", "topo", "scan", "carbon", "grain", "glow", "vignette")
+
 
 def default_config() -> dict:
     return {
@@ -84,6 +91,11 @@ def default_config() -> dict:
             "dim_level": 25,               # percent brightness of the dim overlay
             "clock_24h": True,
             "show_vm_cpu": True,
+            "pattern": "none",             # see PATTERNS
+            "pattern_strength": 100,       # percent, 0 turns the backdrop off
+            # Blank means "follow the accent", which is what most people want;
+            # a hex value pins the corner glow to its own colour.
+            "glow_color": "",
         },
     }
 
@@ -228,6 +240,11 @@ def normalize(raw: Any) -> dict:
     ui["dim_after"] = _int(ui_raw.get("dim_after"), 0, 86400, ui["dim_after"])
     ui["dim_level"] = _int(ui_raw.get("dim_level"), 0, 90, ui["dim_level"])
     ui["clock_24h"] = bool(ui_raw.get("clock_24h", ui["clock_24h"]))
+    ui["pattern"] = _one_of(ui_raw.get("pattern"), PATTERNS, ui["pattern"])
+    ui["pattern_strength"] = _int(ui_raw.get("pattern_strength"), 0, 200,
+                                  ui["pattern_strength"])
+    glow = ui_raw.get("glow_color")
+    ui["glow_color"] = _hex_colour(glow, "") if isinstance(glow, str) and glow.strip() else ""
     ui["show_vm_cpu"] = bool(ui_raw.get("show_vm_cpu", ui["show_vm_cpu"]))
 
     favorites: list = []

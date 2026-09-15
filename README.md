@@ -21,6 +21,8 @@ new sensor there and it appears here on the next poll.
 - **Twelve global themes**, including a black-and-yellow *Bambu* to match a
   3D-printed rack and a *Flight Deck* built from the cv.hadife.com palette. A
   theme repaints every page, dial ramp and chart series at once.
+- **Fifteen backdrops** — dot matrix, blueprint, circuit traces, topographic
+  and more — with a strength slider and a colour picker for the corner glow.
 - Tap any VM or container for its own CPU, memory, disk and network dials plus
   hour/day/week history.
 - No pip packages. The Pi needs `python3` and nothing else.
@@ -144,6 +146,30 @@ Picking one sets the accent, both colour ramps and the chart palette. Anything
 can then be adjusted individually: the accent has eight presets, a full picker
 and ten favourite slots, and each colour ramp is an editable list of stops.
 
+## Backdrops
+
+The pages sit on a flat ground by default. **Settings → Backdrop** offers
+fifteen patterns, each one CSS declaration with no image files, on a single
+layer behind the content:
+
+| Quiet | Medium | Strong |
+|---|---|---|
+| Dots, Grid, Plate, Vignette | Blueprint, Hatch, Crosshairs, Carbon, Corner glow | Hex, Circuit, Topo, Scanlines, Grain |
+
+A **strength** slider scales any of them from off to double, which matters
+because this panel is about 170 dpi — roughly twice a desktop monitor — so a
+pattern renders at half the size it looks on a laptop. The busier ones read
+best at 60% or below.
+
+Every pattern is drawn in one neutral slate at low alpha rather than a fixed
+light or dark colour. Over a dark ground it lightens, over a light ground it
+darkens, so a single value carries all twelve themes with no per-theme
+variants. **Corner glow** is the exception: it takes its own colour, chosen
+from eight presets or a full picker, and follows the accent until you pin it.
+
+A backdrop is independent of the theme, so switching theme keeps whichever one
+you picked.
+
 ### Dial colours
 
 The arc colour is interpolated between stops rather than snapped, so a value
@@ -178,6 +204,9 @@ because it holds the API token.
   "ui": {
     "theme": "midnight",
     "accent": "#4aa3ff",
+    "pattern": "none",          // backdrop; see Settings → Backdrop
+    "pattern_strength": 100,    // percent, 0-200
+    "glow_color": "",           // corner glow; blank follows the accent
     "dial_color": "threshold",  // threshold | accent
     "temp_min": 20, "temp_max": 90,
     "rotate_seconds": 0,        // >0 cycles pages automatically

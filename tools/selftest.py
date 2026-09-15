@@ -81,6 +81,26 @@ def test_config_normalisation():
 
     check("garbage input yields defaults", cfg.normalize("nonsense")["version"], 1)
 
+    # Backdrops are independent of the theme, so a theme change must not
+    # silently reset the pattern someone chose.
+    check("default backdrop is off", base["ui"]["pattern"], "none")
+    for pattern in cfg.PATTERNS:
+        if cfg.normalize({"ui": {"pattern": pattern}})["ui"]["pattern"] != pattern:
+            FAILURES.append(f"pattern {pattern} was not accepted")
+    print(f"  ok   all {len(cfg.PATTERNS)} backdrops accepted")
+    backdrop = cfg.normalize({"ui": {"pattern": "zzz", "pattern_strength": 900,
+                                     "glow_color": "#FF8800"}})["ui"]
+    check("unknown pattern falls back", backdrop["pattern"], "none")
+    check("strength clamped", backdrop["pattern_strength"], 200)
+    check("glow colour lowercased", backdrop["glow_color"], "#ff8800")
+    check("blank glow means follow the accent",
+          cfg.normalize({"ui": {"glow_color": "   "}})["ui"]["glow_color"], "")
+    check("bad glow colour rejected",
+          cfg.normalize({"ui": {"glow_color": "rebeccapurple"}})["ui"]["glow_color"], "")
+    kept = cfg.merge(cfg.normalize({"ui": {"pattern": "circuit"}}),
+                     {"ui": {"theme": "bambu"}})["ui"]
+    check("changing theme keeps the backdrop", kept["pattern"], "circuit")
+
 
 def test_secrets_never_leave():
     print("secret handling")

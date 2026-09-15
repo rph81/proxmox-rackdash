@@ -96,6 +96,30 @@ const THEMES = [
     series: ['#b45309', '#4d7c0f', '#0f766e', '#b91c1c', '#7c3aed', '#0369a1', '#c2410c', '#a21caf'] },
 ];
 
+/* Backdrops. The pattern itself lives in style.css on a layer behind the
+ * content; this list only drives the picker and the labels. A pattern is
+ * deliberately independent of the theme, so changing theme keeps it. */
+const PATTERNS = [
+  { id: 'none',      label: 'Flat' },
+  { id: 'dots',      label: 'Dots' },
+  { id: 'grid',      label: 'Grid' },
+  { id: 'blueprint', label: 'Blueprint' },
+  { id: 'plate',     label: 'Plate' },
+  { id: 'hatch',     label: 'Hatch' },
+  { id: 'crosshair', label: 'Crosshairs' },
+  { id: 'hex',       label: 'Hex' },
+  { id: 'circuit',   label: 'Circuit' },
+  { id: 'topo',      label: 'Topo' },
+  { id: 'scan',      label: 'Scanlines' },
+  { id: 'carbon',    label: 'Carbon' },
+  { id: 'grain',     label: 'Grain' },
+  { id: 'glow',      label: 'Corner glow' },
+  { id: 'vignette',  label: 'Vignette' },
+];
+
+const GLOW_PRESETS = ['#4aa3ff', '#22d3ee', '#3fb950', '#ffd400',
+                      '#ff8a3d', '#f85149', '#ff4fd8', '#a371f7'];
+
 const LIGHT_THEMES = ['daylight', 'paper'];
 const themeById = (id) => THEMES.find((t) => t.id === id) || THEMES[0];
 
@@ -280,6 +304,20 @@ function applyTheme() {
   root.setProperty('--accent-dim', light ? mixHex(accent, '#ffffff', 0.84)
                                          : mixHex(accent, '#0e1116', 0.7));
   root.setProperty('--accent-soft', rgba(accent, light ? 0.14 : 0.13));
+  applyPattern();
+}
+
+/** The backdrop is one fixed layer behind everything, so strength is just its
+ *  opacity and the corner glow is a single custom property. */
+function applyPattern() {
+  const ui = state.config.ui;
+  document.body.dataset.pattern = ui.pattern || 'none';
+  document.documentElement.style.setProperty(
+    '--pattern-strength', String(clamp(ui.pattern_strength, 0, 200) / 100));
+  const glow = hexOk(ui.glow_color) ? ui.glow_color
+    : (hexOk(ui.accent) ? ui.accent : '#4aa3ff');
+  document.documentElement.style.setProperty(
+    '--pat-glow', rgba(glow, LIGHT_THEMES.includes(ui.theme) ? 0.16 : 0.2));
 }
 
 /* -------------------------------------------------------------------- dial */
@@ -1140,6 +1178,7 @@ function renderSettings() {
   const ui = state.config.ui;
 
   renderThemeGallery();
+  renderPatternGallery();
   document.querySelectorAll('#set-dialcolor button').forEach((button) => {
     button.setAttribute('aria-pressed', String(button.dataset.dialcolor === ui.dial_color));
   });
@@ -1252,6 +1291,58 @@ function applyThemePreset(id) {
   toast(`${theme.label} theme applied`);
 }
 
+function renderPatternGallery() {
+  const ui = state.config.ui;
+  const active = PATTERNS.find((p) => p.id === ui.pattern) || PATTERNS[0];
+  document.getElementById('set-pattern-tag').textContent = active.label;
+
+  const container = document.getElementById('set-pattern');
+  container.replaceChildren(...PATTERNS.map((pattern) => {
+    // Each tile borrows the real pattern by carrying the same data attribute,
+    // so a swatch can never drift from what the page actually draws.
+    const art = el('div', { class: 'swatch-art' });
+    art.dataset.pattern = pattern.id;
+    const card = el('button', {
+      type: 'button', class: 'pattern-card', title: pattern.label,
+      onclick: () => selectPattern(pattern.id),
+    }, art, el('div', { class: 'swatch-name', text: pattern.label }));
+    card.setAttribute('aria-pressed', String(pattern.id === ui.pattern));
+    return card;
+  }));
+
+  document.getElementById('set-pattern-strength').value = ui.pattern_strength;
+  document.getElementById('set-pattern-strength-out').textContent =
+    `${ui.pattern_strength}%`;
+
+  // The glow colour only means anything for the one pattern that uses it.
+  const glowRow = document.getElementById('set-glow-row');
+  glowRow.hidden = ui.pattern !== 'glow';
+  if (!glowRow.hidden) renderGlowRow();
+}
+
+function renderGlowRow() {
+  const ui = state.config.ui;
+  const effective = hexOk(ui.glow_color) ? ui.glow_color : ui.accent;
+  document.getElementById('set-glow-presets').replaceChildren(
+    ...GLOW_PRESETS.map((colour) => {
+      const button = el('button', {
+        class: 'swatch', type: 'button', title: colour,
+        onclick: () => patchUi({ glow_color: colour }) || renderSettings(),
+      });
+      button.style.background = colour;
+      button.setAttribute('aria-pressed', String(colour === ui.glow_color));
+      return button;
+    }));
+  document.getElementById('set-glow-picker').value = effective;
+  document.getElementById('set-glow-hex').value = ui.glow_color || effective;
+  document.getElementById('set-glow-accent').disabled = !ui.glow_color;
+}
+
+function selectPattern(id) {
+  patchUi({ pattern: id });
+  renderSettings();
+}
+
 function renderStops(containerId, key, lo, hi, unit) {
   const stops = state.config.ui[key];
   const container = document.getElementById(containerId);
@@ -1335,6 +1426,39 @@ function bindSettings() {
     else { toast('Enter a colour as #rrggbb', true); hex.value = state.config.ui.accent; }
   });
   document.getElementById('set-fav-add').onclick = addFavorite;
+
+  // Strength previews live while dragging and only saves when released, so a
+  // slow drag does not post a config update per frame.
+  const strength = document.getElementById('set-pattern-strength');
+  strength.addEventListener('input', () => {
+    state.config.ui.pattern_strength = Number(strength.value);
+    document.getElementById('set-pattern-strength-out').textContent = `${strength.value}%`;
+    applyPattern();
+  });
+  strength.addEventListener('change', () => {
+    patchUi({ pattern_strength: Number(strength.value) });
+  });
+
+  const glowPicker = document.getElementById('set-glow-picker');
+  const glowHex = document.getElementById('set-glow-hex');
+  glowPicker.addEventListener('input', () => {
+    state.config.ui.glow_color = glowPicker.value.toLowerCase();
+    glowHex.value = state.config.ui.glow_color;
+    applyPattern();
+  });
+  glowPicker.addEventListener('change', () => {
+    patchUi({ glow_color: glowPicker.value.toLowerCase() });
+    renderSettings();
+  });
+  glowHex.addEventListener('change', () => {
+    const value = glowHex.value.trim().toLowerCase();
+    if (hexOk(value)) { patchUi({ glow_color: value }); renderSettings(); }
+    else { toast('Enter a colour as #rrggbb', true); renderGlowRow(); }
+  });
+  document.getElementById('set-glow-accent').onclick = () => {
+    patchUi({ glow_color: '' });          // blank means follow the accent
+    renderSettings();
+  };
 
   const number = (id, apply) => {
     document.getElementById(id).addEventListener('change', (event) => {

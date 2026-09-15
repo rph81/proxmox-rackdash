@@ -147,6 +147,27 @@
         <div class="themes" id="set-theme"></div>
       </div>
 
+      <div class="panel span-all">
+        <div class="panel-head">
+          <h2>Backdrop</h2>
+          <span class="tag" id="set-pattern-tag"></span>
+          <span class="spacer"></span>
+          <div class="strength-row">
+            <label for="set-pattern-strength">Strength</label>
+            <input type="range" id="set-pattern-strength" min="0" max="200" step="10">
+            <span class="readout" id="set-pattern-strength-out">100%</span>
+          </div>
+        </div>
+        <div class="patterns" id="set-pattern"></div>
+        <div class="glow-row" id="set-glow-row" hidden>
+          <label class="field-label" style="margin:0">Glow colour</label>
+          <div class="swatches" id="set-glow-presets"></div>
+          <input type="color" id="set-glow-picker" aria-label="Custom glow colour">
+          <input type="text" id="set-glow-hex" class="hex" maxlength="7" spellcheck="false">
+          <button type="button" id="set-glow-accent">Follow accent</button>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="panel-head"><h2>Accent</h2></div>
         <label class="field-label">Accent colour</label>

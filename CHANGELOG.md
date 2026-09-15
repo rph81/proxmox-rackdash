@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.1.0]
+
+### Added
+- **Backdrops**: fifteen background patterns under Settings — dots, grid,
+  blueprint, plate, hatch, crosshairs, hex, circuit traces, topographic,
+  scanlines, carbon weave, grain, corner glow and vignette — each a single
+  CSS declaration with no image files.
+- A **strength** slider scales any backdrop from off to double. It previews
+  live while dragging and saves on release.
+- **Corner glow** takes its own colour, from eight presets or a full picker,
+  and follows the accent until pinned.
+
+Backdrops are independent of the theme, so switching theme keeps the one you
+picked. Each pattern is drawn in one neutral at low alpha, which reads on both
+dark and light grounds without per-theme variants.
+
 ## [1.0.0]
 
 Initial release.

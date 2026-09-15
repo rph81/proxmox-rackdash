@@ -89,6 +89,114 @@
   --header-h: 40px;
 }
 
+/* ------------------------------------------------------------- backdrop
+ * The pattern is painted on one fixed layer behind everything, never on the
+ * elements themselves. That keeps a masked pattern (crosshairs) from clipping
+ * the content sitting on it, lets one opacity scale every pattern, and costs
+ * a single composited layer.
+ *
+ * Patterns are drawn in a neutral slate at low alpha: over a dark ground it
+ * lightens, over a light ground it darkens, so one value carries all twelve
+ * themes with no per-theme variants.
+ */
+:root {
+  --pat-ink: rgba(150, 168, 194, .20);
+  --pat-ink-soft: rgba(150, 168, 194, .10);
+  --pat-glow: rgba(74, 163, 255, .13);
+}
+:root[data-theme="daylight"], :root[data-theme="paper"] {
+  --pat-ink: rgba(72, 88, 110, .22);
+  --pat-ink-soft: rgba(72, 88, 110, .12);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--pattern-strength, 1);
+  background-image: var(--pattern-art, none);
+  background-size: var(--pattern-size, auto);
+  background-position: var(--pattern-pos, 0 0);
+  -webkit-mask-image: var(--pattern-mask, none);
+  mask-image: var(--pattern-mask, none);
+  -webkit-mask-size: var(--pattern-mask-size, auto);
+  mask-size: var(--pattern-mask-size, auto);
+}
+/* Everything real sits above the backdrop layer. */
+#nav, #main, .toast, #dim { position: relative; z-index: 1; }
+
+[data-pattern="dots"] {
+  --pattern-art: radial-gradient(var(--pat-ink) 1px, transparent 1.2px);
+  --pattern-size: 14px 14px;
+}
+[data-pattern="grid"] {
+  --pattern-art: linear-gradient(var(--pat-ink-soft) 1px, transparent 1px),
+                 linear-gradient(90deg, var(--pat-ink-soft) 1px, transparent 1px);
+  --pattern-size: 22px 22px;
+}
+[data-pattern="blueprint"] {
+  --pattern-art: linear-gradient(var(--pat-ink) 1px, transparent 1px),
+                 linear-gradient(90deg, var(--pat-ink) 1px, transparent 1px),
+                 linear-gradient(var(--pat-ink-soft) 1px, transparent 1px),
+                 linear-gradient(90deg, var(--pat-ink-soft) 1px, transparent 1px);
+  --pattern-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;
+}
+[data-pattern="plate"] {
+  --pattern-art: radial-gradient(var(--pat-ink) 1.4px, transparent 1.6px),
+                 radial-gradient(var(--pat-ink-soft) 1.4px, transparent 1.6px);
+  --pattern-size: 16px 16px, 16px 16px;
+  --pattern-pos: 0 0, 8px 8px;
+}
+[data-pattern="hatch"] {
+  --pattern-art: repeating-linear-gradient(45deg,
+                   var(--pat-ink-soft) 0 1px, transparent 1px 9px);
+}
+[data-pattern="crosshair"] {
+  --pattern-art: linear-gradient(var(--pat-ink) 1px, transparent 1px),
+                 linear-gradient(90deg, var(--pat-ink) 1px, transparent 1px);
+  --pattern-size: 40px 40px;
+  --pattern-pos: 20px 20px;
+  /* The mask lands on the backdrop layer only, so the grid is cut down to
+     small ticks without touching the dials drawn above it. */
+  --pattern-mask: radial-gradient(circle 3px at 20px 20px, #000 99%, transparent 100%);
+  --pattern-mask-size: 40px 40px;
+}
+[data-pattern="hex"] {
+  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'56\' height=\'48\' viewBox=\'0 0 56 48\'%3E%3Cpath d=\'M14 0 L28 8 L28 24 L14 32 L0 24 L0 8 Z M42 0 L56 8 L56 24 L42 32 L28 24 L28 8 Z M28 24 L42 32 L42 48 L28 56 L14 48 L14 32 Z\' fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.34\' stroke-width=\'1\'/%3E%3C/svg%3E");
+  --pattern-size: 56px 48px;
+}
+[data-pattern="circuit"] {
+  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'120\' height=\'120\' viewBox=\'0 0 120 120\'%3E%3Cg fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.32\' stroke-width=\'1\'%3E%3Cpath d=\'M10 20h34l12 12h30M10 60h18l14-14M30 110V78l16-16h40M78 10v26l14 14h18M110 78H86l-10 10v22\'/%3E%3C/g%3E%3Cg fill=\'%23808ca0\' fill-opacity=\'.4\'%3E%3Ccircle cx=\'44\' cy=\'20\' r=\'2.4\'/%3E%3Ccircle cx=\'86\' cy=\'32\' r=\'2.4\'/%3E%3Ccircle cx=\'28\' cy=\'60\' r=\'2.4\'/%3E%3Ccircle cx=\'86\' cy=\'62\' r=\'2.4\'/%3E%3Ccircle cx=\'92\' cy=\'50\' r=\'2.4\'/%3E%3Ccircle cx=\'76\' cy=\'88\' r=\'2.4\'/%3E%3C/g%3E%3C/svg%3E");
+  --pattern-size: 120px 120px;
+}
+[data-pattern="topo"] {
+  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'180\' height=\'120\' viewBox=\'0 0 180 120\'%3E%3Cg fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.3\' stroke-width=\'1\'%3E%3Cpath d=\'M-10 30q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 45q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 60q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 75q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 90q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 105q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 15q45-26 90 0t90 0\'/%3E%3C/g%3E%3C/svg%3E");
+  --pattern-size: 180px 120px;
+}
+[data-pattern="scan"] {
+  --pattern-art: repeating-linear-gradient(0deg,
+                   var(--pat-ink-soft) 0 1px, transparent 1px 4px);
+}
+[data-pattern="carbon"] {
+  --pattern-art: repeating-linear-gradient(45deg, var(--pat-ink-soft) 0 2px, transparent 2px 4px),
+                 repeating-linear-gradient(-45deg, var(--pat-ink-soft) 0 2px, transparent 2px 4px);
+  --pattern-size: 8px 8px;
+}
+[data-pattern="grain"] {
+  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'140\' height=\'140\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'.85\' numOctaves=\'3\'/%3E%3C/filter%3E%3Crect width=\'140\' height=\'140\' filter=\'url(%23n)\' opacity=\'.34\'/%3E%3C/svg%3E");
+  --pattern-size: 140px 140px;
+}
+[data-pattern="glow"] {
+  --pattern-art: radial-gradient(60% 120% at 22% 8%, var(--pat-glow) 0%, transparent 62%),
+                 radial-gradient(45% 100% at 88% 96%, var(--pat-glow) 0%, transparent 58%);
+}
+[data-pattern="vignette"] {
+  --pattern-art: radial-gradient(130% 78% at 50% 44%,
+                   transparent 42%, var(--pat-ink-soft) 100%);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 /* Several containers here are flex/grid, which would otherwise win over
    the hidden attribute and leave every page stacked on screen. */
@@ -447,6 +555,53 @@ button.back:active { background: var(--panel-2); }
                           overflow: hidden; text-overflow: ellipsis; }
 .theme-card .theme-hint { font-size: 10px; color: var(--muted); white-space: nowrap;
                           overflow: hidden; text-overflow: ellipsis; }
+
+/* Backdrop pickers paint the real pattern into each tile, so the choice is
+   made by eye against the same ground the page uses. */
+.patterns { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.pattern-card {
+  display: flex; flex-direction: column; gap: 4px; cursor: pointer; padding: 0;
+  background: none; border: 0; color: inherit; font: inherit; min-width: 0;
+}
+.pattern-card .swatch-art {
+  height: 40px; border-radius: 7px; border: 1px solid var(--line);
+  background-color: var(--bg);
+  background-image: var(--pattern-art, none);
+  background-size: var(--pattern-size, auto);
+  background-position: var(--pattern-pos, 0 0);
+  /* Carry the mask too, so the crosshairs swatch shows the ticks it will
+     actually draw rather than the unmasked grid behind them. */
+  -webkit-mask-image: var(--pattern-mask, none);
+  mask-image: var(--pattern-mask, none);
+  -webkit-mask-size: var(--pattern-mask-size, auto);
+  mask-size: var(--pattern-mask-size, auto);
+}
+.pattern-card[aria-pressed="true"] .swatch-art { border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft); }
+.pattern-card .swatch-name {
+  font-size: 10px; color: var(--muted); text-align: center; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.pattern-card[aria-pressed="true"] .swatch-name { color: var(--accent-strong); }
+
+.strength-row { display: flex; align-items: center; gap: 8px; }
+.strength-row label { font-size: 11px; color: var(--muted); text-transform: uppercase;
+                      letter-spacing: .05em; }
+.strength-row input[type="range"] { width: 130px; accent-color: var(--accent); }
+.readout { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+           color: var(--text); min-width: 3.4em; }
+
+.glow-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            padding-top: 4px; border-top: 1px solid var(--line); margin-top: 2px; }
+.glow-row .hex { width: 88px; font-family: ui-monospace, Menlo, monospace; }
+.glow-row input[type="color"] { width: 42px; height: 34px; padding: 2px; border-radius: 6px;
+                                background: var(--panel-2); border: 1px solid var(--line); }
+.glow-row button {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 6px; padding: 7px 10px; font: inherit; font-size: 12px;
+  cursor: pointer; min-height: 34px; white-space: nowrap;
+}
+.glow-row .swatch { width: 26px; height: 26px; }
 .settings-grid .panel { gap: 6px; }
 
 .field-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
