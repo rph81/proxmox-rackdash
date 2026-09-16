@@ -1236,6 +1236,7 @@ function renderSettings() {
   document.getElementById('set-animate').checked = ui.animate;
   document.getElementById('set-chart-fill').checked = ui.chart_fill;
   document.getElementById('set-clock24').checked = ui.clock_24h;
+  document.getElementById('set-show-pi').checked = ui.show_pi;
   document.getElementById('set-link').value = state.config.proxmox.link_mbit;
   document.getElementById('set-pve-interval').value = state.config.proxmox.interval;
 
@@ -1485,6 +1486,7 @@ function bindSettings() {
   check('set-animate', (v) => patchUi({ animate: v }));
   check('set-chart-fill', (v) => patchUi({ chart_fill: v }));
   check('set-clock24', (v) => patchUi({ clock_24h: v }));
+  check('set-show-pi', (v) => patchUi({ show_pi: v }));
 
   document.getElementById('set-start-page').addEventListener('change', (event) => {
     patchUi({ start_page: event.target.value });
@@ -1557,6 +1559,8 @@ function render() {
   document.getElementById('chip-uptime').textContent =
     isNum((snapshot.system || {}).uptime) ? fmtUptime(snapshot.system.uptime) : '';
 
+  renderPi(snapshot.pi || {});
+
   const banner = document.getElementById('banner');
   const problem = snapshot.warning || pve.error
     || (snapshot.temps && snapshot.temps.enabled && snapshot.temps.error);
@@ -1571,6 +1575,42 @@ function render() {
     case 'proxmox': renderProxmox(); break;
     case 'settings': renderSettings(); break;
   }
+}
+
+/** The Pi's own temperature, CPU and GPU. Distinct from the Proxmox numbers,
+ *  so it carries a PI badge; anything unreadable shows a dash rather than a
+ *  zero, because 0% and "no source for this" are very different things. */
+function renderPi(pi) {
+  const node = document.getElementById('pi-stats');
+  const show = state.config.ui.show_pi
+    && (isNum(pi.temp) || isNum(pi.cpu) || isNum(pi.gpu));
+  node.hidden = !show;
+  if (!show) return;
+
+  const stat = (label, value, unit, colour, title) => {
+    const readout = el('div', { class: 'pi-value' });
+    if (isNum(value)) {
+      readout.append(document.createTextNode(value.toFixed(unit === '°' ? 1 : 0)),
+                     el('small', { text: unit }));
+      readout.style.color = colour;
+    } else {
+      readout.append(document.createTextNode('—'));
+      readout.style.color = 'var(--muted)';
+    }
+    const group = el('div', { class: 'pi-stat' },
+      el('span', { class: 'pi-label', text: label }), readout);
+    group.title = title;
+    return group;
+  };
+
+  node.replaceChildren(
+    el('span', { class: 'pi-badge', text: 'PI' }),
+    stat('TEMP', pi.temp, '°', tempColor(pi.temp), pi.model || 'this machine'),
+    stat('CPU', pi.cpu, '%', usageColor(pi.cpu), 'CPU busy since the last poll'),
+    stat('GPU', pi.gpu, '%', usageColor(pi.gpu),
+         pi.gpu_source ? `GPU load via ${pi.gpu_source}`
+                       : 'no GPU load source available on this machine'),
+  );
 }
 
 async function poll() {

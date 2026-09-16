@@ -118,6 +118,7 @@ temperature sensors were picked up from the fan controller.
 | Page | What it shows |
 |---|---|
 | **Overview** | One dial per metric: CPU, memory, root disk, network, then one per selected temperature sensor. Below: load average, guest count, fullest pool, hottest sensor, average fan speed. |
+| **Header** | The Pi's own SoC temperature, CPU load and GPU load, badged `PI` to keep them apart from the hypervisor's numbers. |
 | **Usage** | Processor, memory and network in detail — model, load averages, I/O wait, swap, receive/transmit, one-hour peak — each with a live chart. |
 | **Temps** | Large dials for the selected sensors, a shared history chart, and every fan channel with its RPM and duty. |
 | **VMs** | Every VM and container as a tile with live CPU and memory bars. Tap one for its own dials and hour/day/week history. |
@@ -166,6 +167,25 @@ Picking one sets the accent, both colour ramps and the chart palette. Anything
 can then be adjusted individually: the accent has eight presets, a full picker
 and ten favourite slots, and each colour ramp is an editable list of stops.
 
+## This Pi's own vitals
+
+The header carries three readouts for the machine the screen is bolted to,
+badged `PI` so they are never confused with the hypervisor's figures:
+
+| Readout | Where it comes from |
+|---|---|
+| Temperature | The SoC thermal zone, matched by type rather than assuming zone 0 |
+| CPU | `/proc/stat`, as busy percentage between polls |
+| GPU | Whichever source answers: v3d debugfs, devfreq, or the V3D clock via `vcgencmd` |
+
+A Raspberry Pi has no single agreed place to read GPU utilisation from, so the
+reader tries those in order and reports which one answered (hover the readout
+to see it). If none do, it shows a dash rather than inventing a number. The
+installer adds the service user to the `video` group, which is what `vcgencmd`
+needs.
+
+Turn the whole group off under **Settings → Screen**.
+
 ## Backdrops
 
 The pages sit on a flat ground by default. **Settings → Backdrop** offers
@@ -175,6 +195,11 @@ layer behind the content:
 | Quiet | Medium | Strong |
 |---|---|---|
 | Dots, Grid, Plate, Vignette | Blueprint, Hatch, Crosshairs, Carbon, Corner glow | Hex, Circuit, Topo, Scanlines, Grain |
+
+Every tile is seamless: each trace or contour that leaves one edge re-enters
+the opposite edge at the same coordinate, so a pattern reads as one continuous
+surface rather than a grid of repeated blocks. Circuit is modelled on a board
+fanning out from a connector, with radiused jogs and round pads.
 
 A **strength** slider scales any of them from off to double, which matters
 because this panel is about 170 dpi — roughly twice a desktop monitor — so a

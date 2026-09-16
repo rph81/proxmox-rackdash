@@ -19,6 +19,7 @@ import time
 
 from . import __version__, config as config_module, fanctl as fanctl_module, proxmox
 from .history import Series
+from .host import HostStats
 
 LOG = logging.getLogger("rackdash.collector")
 
@@ -85,6 +86,12 @@ class Collector:
         self._fan_error: str | None = None
         self._fan_seen: float = 0.0
 
+        # The Pi's own vitals are local reads, so they keep working and keep
+        # updating even when the hypervisor is unreachable.
+        self._host = HostStats()
+        self._host_stats: dict = {"model": self._host.model, "temp": None,
+                                  "cpu": None, "gpu": None, "gpu_source": None}
+
         self._live = Series(LIVE_SECONDS, self.config["proxmox"]["interval"])
         self._temp_live = Series(LIVE_SECONDS, self.config["fanctl"]["interval"])
 
@@ -132,6 +139,12 @@ class Collector:
         while not self._stop.is_set():
             with self._lock:
                 interval = self.config["proxmox"]["interval"]
+            try:
+                # Read the local box first: it costs microseconds and must not
+                # be skipped by an early return in the Proxmox poll.
+                self._host_stats = self._host.read()
+            except Exception:
+                LOG.exception("unhandled error reading local stats")
             try:
                 self._poll_proxmox()
             except Exception:  # never let the thread die
@@ -382,6 +395,7 @@ class Collector:
                     "release": (self._version or {}).get("release", ""),
                     "version": (self._version or {}).get("version", ""),
                 },
+                "pi": dict(self._host_stats),
                 "guests": list(self._guests),
                 "talkers": list(self._talkers),
                 "storage": list(self._storage),

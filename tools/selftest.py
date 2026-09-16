@@ -21,6 +21,7 @@ from rackdash import fanctl as fanctl_module  # noqa: E402
 from rackdash import proxmox  # noqa: E402
 from rackdash.collector import _due  # noqa: E402
 from rackdash.history import Series  # noqa: E402
+from rackdash import host as host_module  # noqa: E402
 from rackdash.httpd import make_server  # noqa: E402
 
 FAILURES: list = []
@@ -367,10 +368,88 @@ def test_http():
         server.server_close()
 
 
+def test_host_stats():
+    print("this machine's vitals")
+    with tempfile.TemporaryDirectory() as tmp:
+        # Thermal zones are matched by type, not by number: zone 0 is the CPU
+        # on a Pi but can be a battery or a wifi chip elsewhere.
+        for index, (kind, value) in enumerate((("battery", "31000"),
+                                               ("cpu-thermal", "48200"))):
+            os.makedirs(os.path.join(tmp, f"thermal_zone{index}"))
+            for name, text in (("type", kind), ("temp", value)):
+                with open(os.path.join(tmp, f"thermal_zone{index}", name), "w",
+                          encoding="utf-8") as handle:
+                    handle.write(text)
+
+        saved_glob, saved_stat = host_module.THERMAL_GLOB, host_module.PROC_STAT
+        try:
+            host_module.THERMAL_GLOB = os.path.join(tmp, "thermal_zone*/type")
+            stats = host_module.HostStats()
+            close("picks the cpu zone, not the battery", stats.temperature(), 48.2)
+
+            # Some kernels report whole degrees instead of millidegrees.
+            with open(os.path.join(tmp, "thermal_zone1", "temp"), "w",
+                      encoding="utf-8") as handle:
+                handle.write("52")
+            stats._thermal = None
+            close("whole degrees handled", stats.temperature(), 52.0)
+
+            with open(os.path.join(tmp, "thermal_zone1", "temp"), "w",
+                      encoding="utf-8") as handle:
+                handle.write("not a number")
+            stats._thermal = None
+            check("unreadable temperature is None", stats.temperature(), None)
+
+            host_module.THERMAL_GLOB = os.path.join(tmp, "nothing-here*/type")
+            check("no thermal zone at all is None",
+                  host_module.HostStats().temperature(), None)
+
+            # CPU busy is a delta, so the first sample has nothing to report.
+            stat_path = os.path.join(tmp, "stat")
+            host_module.PROC_STAT = stat_path
+            with open(stat_path, "w", encoding="utf-8") as handle:
+                handle.write("cpu  100 0 100 800 0 0 0 0 0 0\n")
+            cpu = host_module.HostStats()
+            check("first cpu sample is None", cpu.cpu_percent(), None)
+            with open(stat_path, "w", encoding="utf-8") as handle:
+                handle.write("cpu  150 0 150 900 0 0 0 0 0 0\n")
+            close("busy computed from the delta", cpu.cpu_percent(), 50.0)
+            # Polling faster than the kernel ticks must hold the last figure
+            # rather than blink the readout to a dash.
+            close("an unchanged sample holds the last figure", cpu.cpu_percent(), 50.0)
+
+            with open(stat_path, "w", encoding="utf-8") as handle:
+                handle.write("garbage\n")
+            check("malformed /proc/stat is None", cpu.cpu_percent(), None)
+
+            host_module.PROC_STAT = os.path.join(tmp, "absent")
+            check("missing /proc/stat is None",
+                  host_module.HostStats().cpu_percent(), None)
+        finally:
+            host_module.THERMAL_GLOB, host_module.PROC_STAT = saved_glob, saved_stat
+
+    # No GPU source is a dash on screen, never an invented zero.
+    stats = host_module.HostStats()
+    stats._vcgencmd = None
+    saved = host_module.glob.glob
+    try:
+        host_module.glob.glob = lambda pattern: []
+        check("no gpu source yields None", stats.gpu_percent(), None)
+        check("and reports no source", stats.gpu_source, None)
+    finally:
+        host_module.glob.glob = saved
+
+    reading = host_module.HostStats().read()
+    for key in ("model", "temp", "cpu", "gpu", "gpu_source", "t"):
+        if key not in reading:
+            FAILURES.append(f"read() is missing {key}")
+    print("  ok   read() returns the full shape")
+
+
 def main() -> int:
     for test in (test_config_normalisation, test_secrets_never_leave,
                  test_proxmox_shaping, test_fanctl_selection,
-                 test_due_and_history, test_http):
+                 test_due_and_history, test_host_stats, test_http):
         test()
         print()
     if FAILURES:

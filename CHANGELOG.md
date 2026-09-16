@@ -3,6 +3,26 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.2.0]
+
+### Added
+- The header now shows **this Pi's own** SoC temperature, CPU load and GPU
+  load, badged `PI` to keep them apart from the hypervisor's numbers. Turn
+  them off under Settings → Screen.
+- GPU load is read from whichever source answers: v3d debugfs, devfreq, or
+  the V3D clock via `vcgencmd`. The readout names the source on hover, and
+  shows a dash rather than a made-up number when none is available. The
+  installer adds the service user to the `video` group for `vcgencmd`.
+
+### Fixed
+- **Circuit** and **Topo** backdrops tiled visibly: traces and contours did
+  not line up across tile edges, so the pattern read as repeated blocks.
+  Both are rebuilt as genuinely seamless tiles, and Circuit is redrawn as a
+  board fanning out from a connector with radiused jogs and round pads. Hex
+  was rebuilt the same way.
+- Reading CPU busy twice inside one kernel tick returned nothing, which
+  blinked the readout to a dash. It now holds the previous figure.
+
 ## [1.1.1]
 
 ### Fixed

@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from rackdash import collector as collector_module  # noqa: E402
 from rackdash import config as config_module  # noqa: E402
 from rackdash.__main__ import main  # noqa: E402
 
@@ -242,6 +243,26 @@ def _curve(temp: float, points: list) -> float:
 WORLD = World()
 
 
+class FakeHostStats:
+    """Stands in for the Pi's sysfs, so the header readouts can be seen on a
+    development machine that has no thermal zone or V3D at all."""
+
+    def __init__(self):
+        self.model = "Raspberry Pi 5 Model B Rev 1.0 (simulated)"
+        self._temp = 47.0
+        self._cpu = 9.0
+        self._gpu = 4.0
+
+    def read(self) -> dict:
+        self._temp += random.uniform(-0.8, 0.8)
+        self._temp = min(74.0, max(38.0, self._temp))
+        self._cpu = min(100.0, max(2.0, self._cpu + random.uniform(-4, 5)))
+        self._gpu = min(100.0, max(0.0, self._gpu + random.uniform(-3, 4)))
+        return {"model": self.model, "temp": round(self._temp, 1),
+                "cpu": round(self._cpu, 1), "gpu": round(self._gpu, 1),
+                "gpu_source": "v3d clock", "t": time.time()}
+
+
 class FakeProxmox(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -440,6 +461,10 @@ def run() -> int:
     serve(FakeFanctl, args.fan_port)
     print(f"fake Proxmox on http://127.0.0.1:{args.pve_port}", flush=True)
     print(f"fake fanctl  on http://127.0.0.1:{args.fan_port}", flush=True)
+
+    # The dashboard reads the real machine's vitals; on a laptop there is
+    # nothing to read, so swap in a fake to exercise the header readouts.
+    collector_module.HostStats = FakeHostStats
 
     stop = threading.Event()
     threading.Thread(target=simulate, args=(stop,), daemon=True).start()

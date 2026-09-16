@@ -68,6 +68,12 @@ if ! id -u "$RUN_USER" >/dev/null 2>&1; then
   useradd --system --no-create-home --shell /usr/sbin/nologin "$RUN_USER"
 fi
 
+# vcgencmd is how the GPU load figure is read on a Pi, and it needs the video
+# group. Harmless everywhere else; the reader just reports no GPU source.
+if getent group video >/dev/null 2>&1; then
+  usermod -aG video "$RUN_USER" 2>/dev/null || warn "could not add $RUN_USER to the video group"
+fi
+
 # ------------------------------------------------------------------------ files
 
 info "installing to $PREFIX"

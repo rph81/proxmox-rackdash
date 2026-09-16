@@ -164,16 +164,16 @@ body::before {
   --pattern-mask-size: 40px 40px;
 }
 [data-pattern="hex"] {
-  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'56\' height=\'48\' viewBox=\'0 0 56 48\'%3E%3Cpath d=\'M14 0 L28 8 L28 24 L14 32 L0 24 L0 8 Z M42 0 L56 8 L56 24 L42 32 L28 24 L28 8 Z M28 24 L42 32 L42 48 L28 56 L14 48 L14 32 Z\' fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.34\' stroke-width=\'1\'/%3E%3C/svg%3E");
-  --pattern-size: 56px 48px;
+  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'54\' height=\'31.18\' viewBox=\'0 0 54 31.18\'%3E %3Cg fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.32\' stroke-width=\'1\'%3E %3Cpath d=\'M0 15.59h9l9-15.59h18l9 15.59-9 15.59H18z\'/%3E %3Cpath d=\'M45 15.59h9\'/%3E %3Cpath d=\'M36 0h9m-9 31.18h9\'/%3E %3C/g%3E%3C/svg%3E");
+  --pattern-size: 54px 31.18px;
 }
 [data-pattern="circuit"] {
-  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'120\' height=\'120\' viewBox=\'0 0 120 120\'%3E%3Cg fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.32\' stroke-width=\'1\'%3E%3Cpath d=\'M10 20h34l12 12h30M10 60h18l14-14M30 110V78l16-16h40M78 10v26l14 14h18M110 78H86l-10 10v22\'/%3E%3C/g%3E%3Cg fill=\'%23808ca0\' fill-opacity=\'.4\'%3E%3Ccircle cx=\'44\' cy=\'20\' r=\'2.4\'/%3E%3Ccircle cx=\'86\' cy=\'32\' r=\'2.4\'/%3E%3Ccircle cx=\'28\' cy=\'60\' r=\'2.4\'/%3E%3Ccircle cx=\'86\' cy=\'62\' r=\'2.4\'/%3E%3Ccircle cx=\'92\' cy=\'50\' r=\'2.4\'/%3E%3Ccircle cx=\'76\' cy=\'88\' r=\'2.4\'/%3E%3C/g%3E%3C/svg%3E");
-  --pattern-size: 120px 120px;
+  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'280\' height=\'240\' viewBox=\'0 0 280 240\'%3E%3Cg fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.26\' stroke-width=\'1\' stroke-linecap=\'round\'%3E%3Cpath d=\'M74 0 v72 q0 9-9 9 h-22 q-9 0-9 9 v52 q0 9 9 9 h22 q9 0 9 9 v80\'/%3E%3Cpath d=\'M126 0 v26 q0 9 9 9 h38 q9 0 9 9 v104 q0 9-9 9 h-38 q-9 0-9 9 v74\'/%3E%3Cpath d=\'M232 0 v54 q0 9-9 9 h-18 q-9 0-9 9 v74 q0 9 9 9 h18 q9 0 9 9 v76\'/%3E%3Cpath d=\'M262 0 v96 q0 9 9 9 h8 q9 0 9 9 v22 q0 9-9 9 h-8 q-9 0-9 9 v86\'/%3E%3Cpath d=\'M40 52 h26 q9 0 9 9 v22\'/%3E%3Cpath d=\'M126 178 h-36 q-9 0-9 9 v14\'/%3E%3Cpath d=\'M196 145 h32 q9 0 9 9 v18\'/%3E%3Cpath d=\'M56 138 h-18 q-9 0-9-9 v-16\'/%3E%3Cpath d=\'M214 62 h-26 q-9 0-9 9 v20\'/%3E%3C/g%3E%3Cg fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.34\' stroke-width=\'1.5\' stroke-linecap=\'round\'%3E%3Cpath d=\'M22 0 v34 q0 9 9 9 h30 q9 0 9 9 v46 q0 9-9 9 h-30 q-9 0-9 9 v124\'/%3E%3Cpath d=\'M178 0 v118 q0 9 9 9 h26 q9 0 9 9 v42 q0 9-9 9 h-26 q-9 0-9 9 v44\'/%3E%3C/g%3E%3Cg fill=\'%23808ca0\' fill-opacity=\'.4\'%3E%3Ccircle cx=\'22\' cy=\'34\' r=\'2.4\'/%3E%3Ccircle cx=\'126\' cy=\'26\' r=\'2.6\'/%3E%3Ccircle cx=\'232\' cy=\'54\' r=\'2.2\'/%3E%3Ccircle cx=\'178\' cy=\'118\' r=\'3.0\'/%3E%3Ccircle cx=\'74\' cy=\'72\' r=\'2.4\'/%3E%3Ccircle cx=\'262\' cy=\'96\' r=\'2.2\'/%3E%3Ccircle cx=\'109\' cy=\'61\' r=\'2.0\'/%3E%3Ccircle cx=\'169\' cy=\'199\' r=\'2.4\'/%3E%3Ccircle cx=\'75\' cy=\'83\' r=\'3.2\'/%3E%3Ccircle cx=\'81\' cy=\'201\' r=\'2.6\'/%3E%3Ccircle cx=\'237\' cy=\'172\' r=\'3.0\'/%3E%3Ccircle cx=\'29\' cy=\'113\' r=\'2.4\'/%3E%3Ccircle cx=\'179\' cy=\'91\' r=\'2.8\'/%3E%3C/g%3E%3C/svg%3E");
+  --pattern-size: 280px 240px;
 }
 [data-pattern="topo"] {
-  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'180\' height=\'120\' viewBox=\'0 0 180 120\'%3E%3Cg fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.3\' stroke-width=\'1\'%3E%3Cpath d=\'M-10 30q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 45q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 60q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 75q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 90q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 105q45-26 90 0t90 0\'/%3E%3Cpath d=\'M-10 15q45-26 90 0t90 0\'/%3E%3C/g%3E%3C/svg%3E");
-  --pattern-size: 180px 120px;
+  --pattern-art: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'120\' viewBox=\'0 0 200 120\'%3E %3Cg fill=\'none\' stroke=\'%23808ca0\' stroke-opacity=\'.3\' stroke-width=\'1\'%3E %3Cpath d=\'M0 12q50-10 100 0t100 0\'/%3E %3Cpath d=\'M0 32q50-13 100 0t100 0\'/%3E %3Cpath d=\'M0 52q50-11 100 0t100 0\'/%3E %3Cpath d=\'M0 72q50-14 100 0t100 0\'/%3E %3Cpath d=\'M0 92q50-12 100 0t100 0\'/%3E %3Cpath d=\'M0 112q50-13 100 0t100 0\'/%3E %3C/g%3E%3C/svg%3E");
+  --pattern-size: 200px 120px;
 }
 [data-pattern="scan"] {
   --pattern-art: repeating-linear-gradient(0deg,
@@ -304,6 +304,21 @@ body.kiosk { cursor: none; }
   font-size: 12px; color: var(--muted);
   font-family: ui-monospace, Menlo, monospace; white-space: nowrap;
 }
+
+/* The Pi's own vitals. Kept visually distinct from the Proxmox numbers either
+   side of it, because it describes the box the screen is bolted to. */
+.pi { display: flex; align-items: center; gap: 10px; }
+.pi .pi-badge {
+  font-size: 10px; letter-spacing: .1em; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+}
+.pi .pi-stat { display: flex; align-items: baseline; gap: 4px; }
+.pi .pi-label { font-size: 10px; color: var(--muted); letter-spacing: .05em; }
+.pi .pi-value {
+  font-family: ui-monospace, Menlo, monospace; font-size: 13px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.pi .pi-value small { font-size: 10px; font-weight: 400; opacity: .7; }
 
 .banner {
   margin: 6px 12px 0; padding: 7px 10px; border-radius: 7px; font-size: 12px;
