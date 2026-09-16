@@ -176,13 +176,23 @@ badged `PI` so they are never confused with the hypervisor's figures:
 |---|---|
 | Temperature | The SoC thermal zone, matched by type rather than assuming zone 0 |
 | CPU | `/proc/stat`, as busy percentage between polls |
-| GPU | Whichever source answers: v3d debugfs, devfreq, or the V3D clock via `vcgencmd` |
+| GPU / V3D | Real utilisation if the kernel exposes it, otherwise the V3D clock |
 
-A Raspberry Pi has no single agreed place to read GPU utilisation from, so the
-reader tries those in order and reports which one answered (hover the readout
-to see it). If none do, it shows a dash rather than inventing a number. The
-installer adds the service user to the `video` group, which is what `vcgencmd`
-needs.
+**About the GPU figure.** A stock Raspberry Pi kernel exposes no GPU
+utilisation anywhere readable: there is no `gpu_usage` in debugfs and no
+devfreq entry for the V3D. The only thing available is the V3D clock, via
+`vcgencmd`. So the readout shows whichever exists and labels it accordingly —
+`GPU 37%` when something genuinely measures load, `V3D 960 MHz` when only the
+clock can be read. Hover it to see which source answered.
+
+Deriving a percentage from the clock was tempting and would have been wrong:
+on a Pi 5 the V3D clock frequently holds steady regardless of load, so the
+"utilisation" would have read 100% forever.
+
+Reading the clock needs two things, both of which the install handles: the
+service user in the `video` group, and a device sandbox that leaves
+`/dev/vcio` reachable. If the readout is blank, `journalctl -u rackdash` says
+why.
 
 Turn the whole group off under **Settings → Screen**.
 

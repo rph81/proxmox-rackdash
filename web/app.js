@@ -1590,8 +1590,9 @@ function renderPi(pi) {
   const stat = (label, value, unit, colour, title) => {
     const readout = el('div', { class: 'pi-value' });
     if (isNum(value)) {
-      readout.append(document.createTextNode(value.toFixed(unit === '°' ? 1 : 0)),
-                     el('small', { text: unit }));
+      const digits = unit === '°' ? 1 : 0;
+      readout.append(document.createTextNode(value.toFixed(digits)),
+                     el('small', { text: unit === 'MHz' ? ' MHz' : unit }));
       readout.style.color = colour;
     } else {
       readout.append(document.createTextNode('—'));
@@ -1603,13 +1604,22 @@ function renderPi(pi) {
     return group;
   };
 
+  // The GPU figure is a percentage only when something actually measures
+  // load. On a stock Pi the only reading available is the V3D clock, so it is
+  // labelled and coloured as a clock rather than dressed up as utilisation.
+  const gpuIsLoad = (pi.gpu_unit || '%') === '%';
+  const gpuTitle = pi.gpu_source
+    ? (gpuIsLoad ? `GPU load via ${pi.gpu_source}`
+                 : `V3D clock via ${pi.gpu_source}. This kernel exposes no GPU `
+                   + `utilisation figure, so the clock is shown instead.`)
+    : 'no GPU reading available on this machine';
+
   node.replaceChildren(
     el('span', { class: 'pi-badge', text: 'PI' }),
     stat('TEMP', pi.temp, '°', tempColor(pi.temp), pi.model || 'this machine'),
     stat('CPU', pi.cpu, '%', usageColor(pi.cpu), 'CPU busy since the last poll'),
-    stat('GPU', pi.gpu, '%', usageColor(pi.gpu),
-         pi.gpu_source ? `GPU load via ${pi.gpu_source}`
-                       : 'no GPU load source available on this machine'),
+    stat(gpuIsLoad ? 'GPU' : 'V3D', pi.gpu, pi.gpu_unit || '%',
+         gpuIsLoad ? usageColor(pi.gpu) : 'var(--text)', gpuTitle),
   );
 }
 

@@ -21,7 +21,13 @@ User=rackdash
 Group=rackdash
 NoNewPrivileges=yes
 PrivateTmp=yes
+# A private /dev, but with the VideoCore mailbox punched through: vcgencmd is
+# the only way to read the V3D clock on a Pi, and it opens /dev/vcio. Without
+# these two lines the GPU readout is permanently blank, because the sandbox
+# hides the node even though the service user is in the video group.
 PrivateDevices=yes
+DeviceAllow=/dev/vcio rw
+DeviceAllow=/dev/vchiq rw
 ProtectHome=yes
 ProtectSystem=strict
 ProtectKernelTunables=yes

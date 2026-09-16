@@ -27,12 +27,14 @@ THERMAL_GLOB = "/sys/class/thermal/thermal_zone*/type"
 PROC_STAT = "/proc/stat"
 MODEL_PATHS = ("/sys/firmware/devicetree/base/model", "/proc/device-tree/model")
 
-# V3D tops out at a different clock per model, and utilisation inferred from
-# the clock needs that ceiling. Values are the documented maxima; an observed
-# clock above one of these raises the ceiling, so an overclocked Pi still
-# reports sensibly.
-V3D_MAX_HZ = {"5": 960_000_000, "4": 500_000_000}
-V3D_DEFAULT_MAX = 960_000_000
+# What the GPU figure actually is depends on what the machine will tell us.
+# A percentage is only reported when something genuinely measures utilisation;
+# otherwise the V3D clock is reported as a clock, in MHz. Inferring a
+# percentage from the clock was tempting and wrong: on a Pi 5 the V3D clock
+# often sits at a fixed value regardless of load, so the "utilisation" would
+# have read 100% forever.
+GPU_PERCENT = "%"
+GPU_CLOCK = "MHz"
 
 
 def _read(path: str) -> str | None:
@@ -51,8 +53,8 @@ class HostStats:
         self._prev_cpu: tuple | None = None
         self._last_cpu: float | None = None
         self._thermal: str | None = None
-        self._v3d_ceiling = 0
         self._gpu_source: str | None = None
+        self._gpu_warned = False
         self._vcgencmd: str | None | bool = False   # False = not looked for yet
         self.model = self._read_model()
 
@@ -149,83 +151,94 @@ class HostStats:
 
     # -- gpu --------------------------------------------------------------
 
-    def gpu_percent(self) -> float | None:
+    def gpu(self) -> dict:
+        """{value, unit, source}. Unit says whether this is load or a clock."""
         for reader in (self._gpu_from_debugfs, self._gpu_from_devfreq,
                        self._gpu_from_vcgencmd):
-            value = reader()
-            if value is not None:
-                return value
+            result = reader()
+            if result is not None:
+                self._gpu_source = result[2]
+                return {"value": result[0], "unit": result[1], "source": result[2]}
         self._gpu_source = None
-        return None
+        return {"value": None, "unit": GPU_PERCENT, "source": None}
 
     @property
     def gpu_source(self) -> str | None:
         return self._gpu_source
 
-    def _gpu_from_debugfs(self) -> float | None:
-        """v3d exposes a usage figure here, but only to root on most builds."""
+    def _gpu_from_debugfs(self) -> tuple | None:
+        """Real utilisation, where the kernel exposes it.
+
+        Only some builds create this file, and it is root-only, so on a stock
+        Pi this almost always misses and the clock reader below answers.
+        """
         for path in glob.glob("/sys/kernel/debug/dri/*/gpu_usage"):
             text = _read(path)
             if not text:
                 continue
             match = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
             if match:
-                self._gpu_source = "debugfs"
-                return float(match.group(1))
+                return (float(match.group(1)), GPU_PERCENT, "debugfs")
         return None
 
-    def _gpu_from_devfreq(self) -> float | None:
-        """Some kernels expose the V3D through devfreq with a load figure."""
+    def _gpu_from_devfreq(self) -> tuple | None:
+        """Some kernels expose the V3D through devfreq with a real load figure."""
         for base in glob.glob("/sys/class/devfreq/*v3d*") + glob.glob("/sys/class/devfreq/*gpu*"):
             load = _read(os.path.join(base, "device/load"))
             if load and load.isdigit():
-                self._gpu_source = "devfreq"
-                return max(0.0, min(100.0, float(load)))
-            current, maximum = _read(os.path.join(base, "cur_freq")), _read(os.path.join(base, "max_freq"))
-            if current and maximum and maximum.isdigit() and int(maximum) > 0:
-                self._gpu_source = "devfreq clock"
-                return max(0.0, min(100.0, int(current) / int(maximum) * 100.0))
+                return (max(0.0, min(100.0, float(load))), GPU_PERCENT, "devfreq")
+            current = _read(os.path.join(base, "cur_freq"))
+            if current and current.isdigit():
+                return (int(current) / 1e6, GPU_CLOCK, "devfreq clock")
         return None
 
-    def _gpu_from_vcgencmd(self) -> float | None:
-        """Fall back to the V3D clock as a proxy for how hard it is working.
+    def _gpu_from_vcgencmd(self) -> tuple | None:
+        """The V3D clock, reported as a clock.
 
-        The clock idles low and ramps under load, so this tracks utilisation
-        closely enough for a glanceable dial. It needs membership of the
-        `video` group, which the installer grants.
+        Needs the `video` group (the installer grants it) *and* a device
+        sandbox that leaves /dev/vcio reachable (the unit allows it). When
+        either is missing the tool fails, so the reason is logged once.
         """
         if self._vcgencmd is False:
             from shutil import which
             self._vcgencmd = which("vcgencmd")
+            if not self._vcgencmd:
+                LOG.info("vcgencmd not found; no GPU reading on this machine")
         if not self._vcgencmd:
             return None
         try:
             done = subprocess.run([self._vcgencmd, "measure_clock", "v3d"],
                                   capture_output=True, text=True, timeout=2.0,
                                   stdin=subprocess.DEVNULL, check=False)
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
+            LOG.warning("vcgencmd failed, GPU reading disabled: %s", exc)
             self._vcgencmd = None            # do not keep retrying a broken tool
             return None
+
         match = re.search(r"=(\d+)", done.stdout or "")
         if not match:
+            if not self._gpu_warned:
+                detail = (done.stderr or done.stdout or "").strip() or "no output"
+                LOG.warning("vcgencmd gave no V3D clock (%s). If this is a Pi, the "
+                            "service needs the video group and access to /dev/vcio.",
+                            detail.splitlines()[0])
+                self._gpu_warned = True
             return None
         hertz = int(match.group(1))
-        ceiling = max(self._v3d_ceiling, hertz,
-                      V3D_MAX_HZ.get(self._pi_generation(), V3D_DEFAULT_MAX))
-        self._v3d_ceiling = ceiling
-        if ceiling <= 0:
+        if hertz <= 0:
             return None
-        self._gpu_source = "v3d clock"
-        return max(0.0, min(100.0, hertz / ceiling * 100.0))
+        return (hertz / 1e6, GPU_CLOCK, "v3d clock")
 
     # -- combined ---------------------------------------------------------
 
     def read(self) -> dict:
+        gpu = self.gpu()
         return {
             "model": self.model,
             "temp": self.temperature(),
             "cpu": self.cpu_percent(),
-            "gpu": self.gpu_percent(),
-            "gpu_source": self._gpu_source,
+            "gpu": gpu["value"],
+            "gpu_unit": gpu["unit"],
+            "gpu_source": gpu["source"],
             "t": time.time(),
         }

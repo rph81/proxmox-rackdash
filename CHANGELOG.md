@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.2.1]
+
+### Fixed
+- The GPU readout was always blank on a real Pi. The service unit sets
+  `PrivateDevices=yes`, which hid `/dev/vcio` and left `vcgencmd` unable to
+  talk to the VideoCore firmware even with the `video` group. The unit now
+  allows that node specifically, and a failure is logged with its reason
+  instead of silently producing nothing.
+- The GPU figure no longer pretends a clock is a utilisation percentage. A
+  stock Pi kernel exposes no GPU load anywhere readable, and inferring one
+  from the V3D clock read 100% whenever the clock sat at its ceiling, which
+  on a Pi 5 is most of the time. The readout now shows `GPU 37%` only when
+  something genuinely measures load, and `V3D 960 MHz` otherwise, labelled
+  and coloured as the clock it is.
+
 ## [1.2.0]
 
 ### Added

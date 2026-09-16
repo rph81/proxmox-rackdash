@@ -434,13 +434,29 @@ def test_host_stats():
     saved = host_module.glob.glob
     try:
         host_module.glob.glob = lambda pattern: []
-        check("no gpu source yields None", stats.gpu_percent(), None)
+        check("no gpu source yields None", stats.gpu()["value"], None)
         check("and reports no source", stats.gpu_source, None)
     finally:
         host_module.glob.glob = saved
 
+    # A clock must never be dressed up as utilisation: a Pi 5 often holds the
+    # V3D clock steady under load, so a percentage derived from it would read
+    # 100% forever.
+    clocked = host_module.HostStats()
+    clocked._vcgencmd = "/bin/echo-not-used"
+    clocked._gpu_from_vcgencmd = lambda: (1150.0, host_module.GPU_CLOCK, "v3d clock")
+    result = clocked.gpu()
+    check("clock reported as a clock", result["unit"], host_module.GPU_CLOCK)
+    close("clock value in MHz", result["value"], 1150.0)
+    check("source named", result["source"], "v3d clock")
+
+    loaded = host_module.HostStats()
+    loaded._gpu_from_debugfs = lambda: (37.0, host_module.GPU_PERCENT, "debugfs")
+    check("a real load source is a percentage", loaded.gpu()["unit"],
+          host_module.GPU_PERCENT)
+
     reading = host_module.HostStats().read()
-    for key in ("model", "temp", "cpu", "gpu", "gpu_source", "t"):
+    for key in ("model", "temp", "cpu", "gpu", "gpu_unit", "gpu_source", "t"):
         if key not in reading:
             FAILURES.append(f"read() is missing {key}")
     print("  ok   read() returns the full shape")
