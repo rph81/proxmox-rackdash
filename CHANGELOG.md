@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.2.3]
+
+### Fixed
+- The GPU readout is finally live on a Pi. `DevicePolicy=closed` blocks
+  `/dev/vcio` regardless of a matching `DeviceAllow=`, which bisecting the
+  unit with `systemd-run` showed conclusively: the entire hardening set
+  passes without it and fails with it. The device restriction is dropped;
+  every other protection in the unit is unchanged, and file permissions plus
+  an unprivileged user with no capabilities already govern what it can open.
+
 ## [1.2.2]
 
 ### Fixed

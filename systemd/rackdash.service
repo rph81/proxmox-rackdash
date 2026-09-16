@@ -21,16 +21,17 @@ User=rackdash
 Group=rackdash
 NoNewPrivileges=yes
 PrivateTmp=yes
-# PrivateDevices= is deliberately NOT set. It would give the service a private
-# /dev built from a fixed list of pseudo-devices, and DeviceAllow= only widens
-# the cgroup filter, not that list, so /dev/vcio stays invisible. vcgencmd then
-# falls back to creating its own node and fails as an unprivileged user, which
-# left the GPU readout permanently blank. The device policy below is what
-# actually restricts access, and it is narrower than a private /dev anyway:
-# the mailbox and nothing else.
-DevicePolicy=closed
-DeviceAllow=/dev/vcio rw
-DeviceAllow=/dev/vchiq rw
+# No device restriction here, and it took three attempts to land on that.
+# PrivateDevices=yes hides /dev/vcio, which vcgencmd needs to read the V3D
+# clock on a Pi. DevicePolicy=closed blocks it too, and DeviceAllow=/dev/vcio
+# does not rescue it: bisecting the unit against systemd-run showed the whole
+# hardening set passing until DevicePolicy was added, and failing with it
+# whether or not the node was allowed.
+#
+# What is lost is small. The service is an unprivileged user with no
+# capabilities and NoNewPrivileges, so ordinary file permissions already
+# decide what it can open: the video group for the mailbox, and nothing else
+# it is not already entitled to. Every other protection below still applies.
 ProtectHome=yes
 ProtectSystem=strict
 ProtectKernelTunables=yes
