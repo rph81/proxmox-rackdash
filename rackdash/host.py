@@ -36,6 +36,20 @@ MODEL_PATHS = ("/sys/firmware/devicetree/base/model", "/proc/device-tree/model")
 GPU_PERCENT = "%"
 GPU_CLOCK = "MHz"
 
+# The v3d driver publishes accumulated busy time per scheduling queue here,
+# alongside the clock those totals are measured against. Differencing both
+# between two reads gives real utilisation, and because the ratio is of two
+# values from the same clock, the units cancel and never need to be assumed.
+# This is the same source the Raspberry Pi desktop's GPU widget uses.
+V3D_STATS_GLOBS = (
+    "/sys/devices/platform/axi/*.v3d/gpu_stats",
+    "/sys/devices/platform/*/*.v3d/gpu_stats",
+    "/sys/bus/platform/devices/*.v3d/gpu_stats",
+    "/sys/class/drm/card*/device/gpu_stats",
+)
+# Rows that are not GPU work queues.
+V3D_SKIP_QUEUES = frozenset({"cpu"})
+
 
 def _read(path: str) -> str | None:
     try:
@@ -55,6 +69,9 @@ class HostStats:
         self._thermal: str | None = None
         self._gpu_source: str | None = None
         self._gpu_warned = False
+        self._v3d_stats: str | None = None
+        self._prev_v3d: tuple | None = None
+        self._last_gpu: float | None = None
         self._vcgencmd: str | None | bool = False   # False = not looked for yet
         self.model = self._read_model()
 
@@ -153,8 +170,8 @@ class HostStats:
 
     def gpu(self) -> dict:
         """{value, unit, source}. Unit says whether this is load or a clock."""
-        for reader in (self._gpu_from_debugfs, self._gpu_from_devfreq,
-                       self._gpu_from_vcgencmd):
+        for reader in (self._gpu_from_v3d_stats, self._gpu_from_debugfs,
+                       self._gpu_from_devfreq, self._gpu_from_vcgencmd):
             result = reader()
             if result is not None:
                 self._gpu_source = result[2]
@@ -165,6 +182,74 @@ class HostStats:
     @property
     def gpu_source(self) -> str | None:
         return self._gpu_source
+
+    def _v3d_stats_path(self) -> str | None:
+        if self._v3d_stats is not None:
+            return self._v3d_stats or None
+        for pattern in V3D_STATS_GLOBS:
+            found = sorted(glob.glob(pattern))
+            if found:
+                self._v3d_stats = found[0]
+                LOG.info("reading GPU utilisation from %s", found[0])
+                return found[0]
+        self._v3d_stats = ""
+        return None
+
+    @staticmethod
+    def _parse_v3d_stats(text: str) -> tuple | None:
+        """(clock, {queue: busy}) from the gpu_stats table, or None."""
+        clock = None
+        queues: dict = {}
+        for line in text.splitlines():
+            fields = line.split()
+            if len(fields) < 4 or fields[0] == "queue":
+                continue
+            name = fields[0]
+            try:
+                stamp, busy = int(fields[1]), int(fields[3])
+            except ValueError:
+                continue
+            clock = stamp if clock is None else max(clock, stamp)
+            if name not in V3D_SKIP_QUEUES:
+                queues[name] = busy
+        if clock is None or not queues:
+            return None
+        return (clock, queues)
+
+    def _gpu_from_v3d_stats(self) -> tuple | None:
+        """Real GPU utilisation, differenced from the driver's own counters."""
+        path = self._v3d_stats_path()
+        if not path:
+            return None
+        text = _read(path)
+        if not text:
+            return None
+        sample = self._parse_v3d_stats(text)
+        if sample is None:
+            return None
+
+        clock, queues = sample
+        previous = self._prev_v3d
+        self._prev_v3d = sample
+        if previous is None:
+            return None                       # needs two reads to mean anything
+        elapsed = clock - previous[0]
+        if elapsed <= 0:
+            # The clock has not advanced, or the counters were reset by a
+            # driver reload. Hold the last figure rather than blink to a dash.
+            return ((self._last_gpu, GPU_PERCENT, "v3d stats")
+                    if self._last_gpu is not None else None)
+
+        # Queues run concurrently, so summing them can exceed the wall clock.
+        # The busiest queue is the honest single answer to "how hard is the
+        # GPU working", and it is naturally bounded at 100%.
+        busiest = 0.0
+        for name, busy in queues.items():
+            delta = busy - previous[1].get(name, busy)
+            if delta > 0:
+                busiest = max(busiest, delta / elapsed * 100.0)
+        self._last_gpu = max(0.0, min(100.0, busiest))
+        return (self._last_gpu, GPU_PERCENT, "v3d stats")
 
     def _gpu_from_debugfs(self) -> tuple | None:
         """Real utilisation, where the kernel exposes it.

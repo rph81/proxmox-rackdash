@@ -439,6 +439,52 @@ def test_host_stats():
     finally:
         host_module.glob.glob = saved
 
+    # Real utilisation from the v3d driver's own counters, which is what the
+    # Raspberry Pi desktop widget reads. Differencing two samples makes the
+    # units cancel, so nothing has to be assumed about the clock.
+    with tempfile.TemporaryDirectory() as tmp:
+        stats_path = os.path.join(tmp, "gpu_stats")
+        def write_stats(clock, render, bin_):
+            with open(stats_path, "w", encoding="utf-8") as handle:
+                handle.write("queue\ttimestamp\tjobs\truntime\n")
+                handle.write(f"bin\t{clock}\t10\t{bin_}\n")
+                handle.write(f"render\t{clock}\t10\t{render}\n")
+                handle.write(f"csd\t{clock}\t0\t0\n")
+                handle.write(f"cpu\t{clock}\t0\t999999999\n")
+
+        saved = host_module.V3D_STATS_GLOBS
+        try:
+            host_module.V3D_STATS_GLOBS = (stats_path,)
+            v3d = host_module.HostStats()
+
+            write_stats(1_000_000_000, 100_000_000, 50_000_000)
+            check("first v3d sample has nothing to diff", v3d.gpu()["value"], None)
+
+            # One second of clock, a quarter of it spent rendering.
+            write_stats(2_000_000_000, 350_000_000, 100_000_000)
+            result = v3d.gpu()
+            close("utilisation from the busiest queue", result["value"], 25.0)
+            check("reported as a percentage", result["unit"], host_module.GPU_PERCENT)
+            check("names the driver counters", result["source"], "v3d stats")
+
+            # The cpu row is not a GPU queue and must not dominate the figure.
+            write_stats(3_000_000_000, 350_000_000, 100_000_000)
+            close("idle reads zero, cpu row ignored", v3d.gpu()["value"], 0.0)
+
+            # A stalled clock holds the last figure instead of blinking.
+            write_stats(3_000_000_000, 400_000_000, 100_000_000)
+            close("stalled clock holds the last figure", v3d.gpu()["value"], 0.0)
+
+            # Concurrent queues must not sum past 100%.
+            write_stats(4_000_000_000, 900_000_000, 900_000_000)
+            value = v3d.gpu()["value"]
+            check("never exceeds 100%", value <= 100.0, True)
+        finally:
+            host_module.V3D_STATS_GLOBS = saved
+
+    check("malformed table is ignored",
+          host_module.HostStats._parse_v3d_stats("garbage\nlines here"), None)
+
     # A clock must never be dressed up as utilisation: a Pi 5 often holds the
     # V3D clock steady under load, so a percentage derived from it would read
     # 100% forever.

@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.3.0]
+
+### Added
+- **Real GPU utilisation.** The V3D driver publishes accumulated busy time per
+  scheduling queue at `/sys/devices/platform/axi/*.v3d/gpu_stats`, alongside
+  the clock those totals are measured against. Differencing two reads gives
+  true utilisation, which is what the Raspberry Pi desktop's own GPU widget
+  uses. The readout is a percentage again, beside the CPU one, and needs no
+  privileges because the file is world-readable.
+- Queues run concurrently, so the figure is the busiest queue rather than
+  their sum, which keeps it bounded at 100% and meaningful.
+
+The clock fallbacks remain for kernels without that file, and still label
+themselves as a clock rather than pretending to be utilisation.
+
 ## [1.2.3]
 
 ### Fixed

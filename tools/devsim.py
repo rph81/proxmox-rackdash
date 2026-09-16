@@ -258,11 +258,9 @@ class FakeHostStats:
         self._temp = min(74.0, max(38.0, self._temp))
         self._cpu = min(100.0, max(2.0, self._cpu + random.uniform(-4, 5)))
         self._gpu = min(100.0, max(0.0, self._gpu + random.uniform(-3, 4)))
-        # A real Pi 5 has no utilisation source, only the V3D clock, so the
-        # fake reports the same shape the hardware actually produces.
         return {"model": self.model, "temp": round(self._temp, 1),
-                "cpu": round(self._cpu, 1), "gpu": round(910 + self._gpu * 2.4),
-                "gpu_unit": "MHz", "gpu_source": "v3d clock", "t": time.time()}
+                "cpu": round(self._cpu, 1), "gpu": round(self._gpu, 1),
+                "gpu_unit": "%", "gpu_source": "v3d stats", "t": time.time()}
 
 
 class FakeProxmox(BaseHTTPRequestHandler):

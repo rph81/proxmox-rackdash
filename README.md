@@ -178,21 +178,23 @@ badged `PI` so they are never confused with the hypervisor's figures:
 | CPU | `/proc/stat`, as busy percentage between polls |
 | GPU / V3D | Real utilisation if the kernel exposes it, otherwise the V3D clock |
 
-**About the GPU figure.** A stock Raspberry Pi kernel exposes no GPU
-utilisation anywhere readable: there is no `gpu_usage` in debugfs and no
-devfreq entry for the V3D. The only thing available is the V3D clock, via
-`vcgencmd`. So the readout shows whichever exists and labels it accordingly —
-`GPU 37%` when something genuinely measures load, `V3D 960 MHz` when only the
-clock can be read. Hover it to see which source answered.
+**About the GPU figure.** It comes from the V3D driver's own counters at
+`/sys/devices/platform/axi/*.v3d/gpu_stats`, which is the same source the
+Raspberry Pi desktop's GPU widget uses. That file publishes accumulated busy
+nanoseconds for each of the V3D scheduling queues (bin, render, tfu, csd,
+cache_clean) alongside the clock they are measured against, so differencing
+two reads gives true utilisation. Because it is a ratio of two values from the
+same clock, the units cancel and nothing has to be assumed.
 
-Deriving a percentage from the clock was tempting and would have been wrong:
-on a Pi 5 the V3D clock frequently holds steady regardless of load, so the
-"utilisation" would have read 100% forever.
+The queues run concurrently, so summing them could exceed the wall clock. The
+readout shows the busiest queue, which is the honest answer to "how hard is
+the GPU working" and is naturally bounded at 100%.
 
-Reading the clock needs two things, both of which the install handles: the
-service user in the `video` group, and a device sandbox that leaves
-`/dev/vcio` reachable. If the readout is blank, `journalctl -u rackdash` says
-why.
+The file is world-readable, so no privileges are needed. On a kernel too old
+to have it the reader falls back to debugfs, then devfreq, then the V3D clock
+via `vcgencmd` — and if only a clock is available it says `V3D 960 MHz` rather
+than dressing a clock up as a percentage. Hover the readout to see which
+source answered.
 
 Turn the whole group off under **Settings → Screen**.
 
