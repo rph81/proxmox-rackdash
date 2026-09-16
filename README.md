@@ -75,14 +75,34 @@ sudo ./install.sh \
   --kiosk
 ```
 
-`--kiosk` installs a full-screen browser on tty1 that starts at boot. It needs
-two packages:
+`--kiosk` installs a full-screen browser on tty1 that starts at boot. It runs
+`cage`, a Wayland compositor that shows exactly one program full screen: no
+desktop, no taskbar, no way to switch apps. Install it and set the Pi to boot
+to a console rather than a desktop:
 
 ```bash
 sudo apt install -y cage chromium-browser
+sudo raspi-config nonint do_boot_behaviour B2    # console, autologin
 ```
 
-Without `--kiosk`, open `http://127.0.0.1:8080/` in any browser on the Pi.
+The kiosk claims tty1 from the login prompt and restarts the browser if it
+ever exits. SSH and the other text consoles (Ctrl+Alt+F2) are unaffected. To
+go back to a desktop: `sudo systemctl disable --now rackdash-kiosk` and
+`sudo raspi-config nonint do_boot_behaviour B4`.
+
+**Prefer to keep the desktop?** Skip `--kiosk` and autostart the browser from
+the desktop session instead:
+
+```bash
+mkdir -p ~/.config/autostart && cat > ~/.config/autostart/rackdash.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=rackdash
+Exec=chromium-browser --kiosk --app=http://127.0.0.1:8080/?kiosk=1 --noerrdialogs --disable-infobars --disable-session-crashed-bubble --check-for-update-interval=31536000
+DESKTOP
+```
+
+Without either, open `http://127.0.0.1:8080/` in any browser on the Pi.
 
 ### 3. Check it
 

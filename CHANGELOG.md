@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.1.1]
+
+### Fixed
+- The kiosk unit was wanted by `graphical.target`, but a kiosk Pi boots to a
+  console with no desktop, so that target is never reached and the kiosk
+  silently never started. It is now wanted by `multi-user.target`.
+- The kiosk and the tty1 login prompt both claimed the console. The unit now
+  conflicts with `getty@tty1` so the kiosk takes the screen cleanly.
+- README now documents both routes: `cage` for a console-only kiosk Pi, and a
+  desktop autostart entry for people who want to keep the desktop.
+
 ## [1.1.0]
 
 ### Added

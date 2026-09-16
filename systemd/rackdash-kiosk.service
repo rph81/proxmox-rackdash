@@ -3,6 +3,10 @@ Description=rackdash - full-screen kiosk browser
 Documentation=file:/opt/rackdash/README.md
 After=rackdash.service systemd-user-sessions.service
 Wants=rackdash.service
+# The kiosk owns tty1, so the login prompt has to give it up. Without this the
+# two fight over the console and the screen flickers between them.
+After=getty@tty1.service
+Conflicts=getty@tty1.service
 
 [Service]
 Type=simple
@@ -39,4 +43,7 @@ Restart=always
 RestartSec=3
 
 [Install]
-WantedBy=graphical.target
+# multi-user.target, not graphical.target: a kiosk Pi boots to a console with
+# no desktop, so graphical.target is never reached and a unit wanted by it
+# would silently never start.
+WantedBy=multi-user.target
