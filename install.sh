@@ -183,7 +183,19 @@ echo "  Config:  $CONFIG"
 echo "  Logs:    journalctl -u $SERVICE -f"
 echo "  Check:   sudo -u $RUN_USER python3 -m rackdash --config $CONFIG --check"
 echo
-if [[ -z "$PVE_HOST" || -z "$TOKEN_SECRET" ]]; then
+# Ask the saved config, not the flags: re-running the installer to pick up new
+# code passes no flags, and warning "no token configured" at someone whose
+# token is sitting in the config file is simply wrong.
+HAVE_TOKEN=$(python3 -c '
+import json, sys
+try:
+    pve = (json.load(open(sys.argv[1])) or {}).get("proxmox") or {}
+    print(1 if pve.get("host") and pve.get("token_secret") else 0)
+except Exception:
+    print(0)
+' "$CONFIG" 2>/dev/null || echo 0)
+
+if [[ "$HAVE_TOKEN" != "1" ]]; then
   warn "No Proxmox token configured yet. On the Proxmox host run:"
   echo "    pveum user token add root@pam rackdash --privsep 0"
   echo "  then re-run this installer with --pve/--token-id/--token-secret."

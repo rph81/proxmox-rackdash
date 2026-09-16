@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.2.2]
+
+### Fixed
+- The GPU readout was still blank after 1.2.1. `PrivateDevices=yes` builds the
+  service a private `/dev` from a fixed list of pseudo-devices, and
+  `DeviceAllow=` only widens the cgroup filter rather than adding nodes to
+  that list, so `/dev/vcio` stayed invisible. `vcgencmd` then fell back to
+  creating its own node and failed as an unprivileged user. The unit now uses
+  `DevicePolicy=closed` with the mailbox allowed, which is narrower in device
+  terms than a private `/dev` and actually lets the tool work.
+- The installer warned "No Proxmox token configured yet" whenever it was
+  re-run without flags, even with a token sitting in the config. It now asks
+  the saved config rather than the command line.
+
 ## [1.2.1]
 
 ### Fixed

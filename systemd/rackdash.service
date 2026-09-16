@@ -21,11 +21,14 @@ User=rackdash
 Group=rackdash
 NoNewPrivileges=yes
 PrivateTmp=yes
-# A private /dev, but with the VideoCore mailbox punched through: vcgencmd is
-# the only way to read the V3D clock on a Pi, and it opens /dev/vcio. Without
-# these two lines the GPU readout is permanently blank, because the sandbox
-# hides the node even though the service user is in the video group.
-PrivateDevices=yes
+# PrivateDevices= is deliberately NOT set. It would give the service a private
+# /dev built from a fixed list of pseudo-devices, and DeviceAllow= only widens
+# the cgroup filter, not that list, so /dev/vcio stays invisible. vcgencmd then
+# falls back to creating its own node and fails as an unprivileged user, which
+# left the GPU readout permanently blank. The device policy below is what
+# actually restricts access, and it is narrower than a private /dev anyway:
+# the mailbox and nothing else.
+DevicePolicy=closed
 DeviceAllow=/dev/vcio rw
 DeviceAllow=/dev/vchiq rw
 ProtectHome=yes
