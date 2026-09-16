@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.3.2]
+
+### Changed
+- Larger header text. The panel is about 170 dpi, so the top bar rendered at
+  roughly half the physical size it appears at on a laptop and was hard to
+  read across a room. The bar grows from 40px to 46px and its type scales
+  with it: hostname and the Pi readouts to 17px, the clock to 20px, labels
+  and chips up a step. The overview strip gives back the six pixels.
+
 ## [1.3.1]
 
 ### Changed
