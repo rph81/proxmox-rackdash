@@ -196,7 +196,10 @@ via `vcgencmd` — and if only a clock is available it says `V3D 960 MHz` rather
 than dressing a clock up as a percentage. Hover the readout to see which
 source answered.
 
-Turn the whole group off under **Settings → Screen**.
+Turn the whole group off under **Settings → Screen**, where **Header text**
+also scales the whole top bar between 100% and 200%. The default is 130%,
+because at ~170 dpi a bar sized for a laptop is half the physical size in a
+rack.
 
 ## Backdrops
 

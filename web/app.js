@@ -304,6 +304,9 @@ function applyTheme() {
   root.setProperty('--accent-dim', light ? mixHex(accent, '#ffffff', 0.84)
                                          : mixHex(accent, '#0e1116', 0.7));
   root.setProperty('--accent-soft', rgba(accent, light ? 0.14 : 0.13));
+  // One factor drives every size in the header bar, including its height, so
+  // the whole strip grows together and stays centred.
+  root.setProperty('--hscale', String(clamp(ui.header_scale || 130, 100, 200) / 100));
   applyPattern();
 }
 
@@ -1259,6 +1262,8 @@ function renderSettings() {
   document.getElementById('set-chart-fill').checked = ui.chart_fill;
   document.getElementById('set-clock24').checked = ui.clock_24h;
   document.getElementById('set-show-pi').checked = ui.show_pi;
+  document.getElementById('set-header-scale').value = ui.header_scale;
+  document.getElementById('set-header-scale-out').textContent = `${ui.header_scale}%`;
   document.getElementById('set-link').value = state.config.proxmox.link_mbit;
   document.getElementById('set-pve-interval').value = state.config.proxmox.interval;
 
@@ -1460,6 +1465,18 @@ function bindSettings() {
   });
   strength.addEventListener('change', () => {
     patchUi({ pattern_strength: Number(strength.value) });
+  });
+
+  // Previews live while dragging so the size can be judged on the panel
+  // itself, and only saves on release.
+  const headerScale = document.getElementById('set-header-scale');
+  headerScale.addEventListener('input', () => {
+    state.config.ui.header_scale = Number(headerScale.value);
+    document.getElementById('set-header-scale-out').textContent = `${headerScale.value}%`;
+    applyTheme();
+  });
+  headerScale.addEventListener('change', () => {
+    patchUi({ header_scale: Number(headerScale.value) });
   });
 
   const glowPicker = document.getElementById('set-glow-picker');

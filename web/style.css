@@ -86,7 +86,8 @@
   --accent-soft: rgba(74, 163, 255, .12);
   --radius: 10px;
   --nav-w: 76px;
-  --header-h: 46px;
+  --hscale: 1.3;
+  --header-h: calc(46px * var(--hscale));
 }
 
 /* ------------------------------------------------------------- backdrop
@@ -281,12 +282,18 @@ body.kiosk { cursor: none; }
   padding: 0 12px;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
-  font-size: 15px;
+  font-size: calc(15px * var(--hscale));
 }
 
-#header .host { font-weight: 600; font-size: 17px; letter-spacing: .01em; }
-#header .clock { font-family: ui-monospace, Menlo, monospace; font-size: 20px;
+#header .host { font-weight: 600; font-size: calc(17px * var(--hscale));
+                letter-spacing: .01em; }
+#header .clock { font-family: ui-monospace, Menlo, monospace;
+                 font-size: calc(20px * var(--hscale));
                  font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Scoped to the header: .tag is also used on fan cards and VM tiles, which
+   have their own tight layouts and must not scale with this. */
+#header .tag { font-size: calc(12px * var(--hscale)); padding: 2px 7px; }
+#header .dot { width: calc(9px * var(--hscale)); height: calc(9px * var(--hscale)); }
 
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
 .dot.on { background: var(--good); box-shadow: 0 0 7px var(--good); }
@@ -302,7 +309,7 @@ body.kiosk { cursor: none; }
 .tag.bad  { color: var(--bad);  border-color: var(--bad); }
 
 .chip {
-  font-size: 14px; color: var(--muted);
+  font-size: calc(14px * var(--hscale)); color: var(--muted);
   font-family: ui-monospace, Menlo, monospace; white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -311,16 +318,18 @@ body.kiosk { cursor: none; }
    side of it, because it describes the box the screen is bolted to. */
 .pi { display: flex; align-items: center; gap: 10px; }
 .pi .pi-badge {
-  font-size: 12px; letter-spacing: .1em; color: var(--muted);
+  font-size: calc(12px * var(--hscale)); letter-spacing: .1em; color: var(--muted);
   border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px;
 }
 .pi .pi-stat { display: flex; align-items: baseline; gap: 4px; }
-.pi .pi-label { font-size: 12px; color: var(--muted); letter-spacing: .05em; }
+.pi .pi-label { font-size: calc(12px * var(--hscale)); color: var(--muted);
+                letter-spacing: .05em; }
 .pi .pi-value {
-  font-family: ui-monospace, Menlo, monospace; font-size: 17px; font-weight: 600;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: calc(17px * var(--hscale)); font-weight: 600;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.pi .pi-value small { font-size: 12px; font-weight: 400; opacity: .7; }
+.pi .pi-value small { font-size: calc(12px * var(--hscale)); font-weight: 400; opacity: .7; }
 
 .banner {
   margin: 6px 12px 0; padding: 7px 10px; border-radius: 7px; font-size: 12px;

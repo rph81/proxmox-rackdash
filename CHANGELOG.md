@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.3.3]
+
+### Added
+- **Header text size** is now adjustable under Settings → Screen, from 100%
+  to 200%, defaulting to 130%. One factor drives every size in the bar
+  including its height, so the strip grows together and stays centred. It
+  previews live while you drag, so it can be judged on the panel itself
+  rather than guessed at.
+
+### Changed
+- The supporting text in the header (version tag, the PI labels and units,
+  the uptime and guest chips) now scales with that factor. Previously only
+  the hostname and clock had grown, which is why 1.3.2 did not look much
+  different.
+
 ## [1.3.2]
 
 ### Changed

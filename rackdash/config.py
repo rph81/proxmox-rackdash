@@ -92,6 +92,9 @@ def default_config() -> dict:
             "clock_24h": True,
             "show_vm_cpu": True,
             "show_pi": True,             # the Pi's own temp/cpu/gpu in the header
+            # Header type scale, percent. The panel is ~170 dpi, so what looks
+            # right on a laptop is half the physical size in a rack.
+            "header_scale": 130,
             "pattern": "none",             # see PATTERNS
             "pattern_strength": 100,       # percent, 0 turns the backdrop off
             # Blank means "follow the accent", which is what most people want;
@@ -242,6 +245,7 @@ def normalize(raw: Any) -> dict:
     ui["dim_level"] = _int(ui_raw.get("dim_level"), 0, 90, ui["dim_level"])
     ui["clock_24h"] = bool(ui_raw.get("clock_24h", ui["clock_24h"]))
     ui["show_pi"] = bool(ui_raw.get("show_pi", ui["show_pi"]))
+    ui["header_scale"] = _int(ui_raw.get("header_scale"), 100, 200, ui["header_scale"])
     ui["pattern"] = _one_of(ui_raw.get("pattern"), PATTERNS, ui["pattern"])
     ui["pattern_strength"] = _int(ui_raw.get("pattern_strength"), 0, 200,
                                   ui["pattern_strength"])
