@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.3.1]
+
+### Changed
+- Cut redundant browser work on every poll. Charts no longer reallocate the
+  canvas backing store unless the size actually changed, dials skip the
+  450ms tween when a reading moved by less than 0.15, and an arc whose
+  position is unchanged no longer restarts its CSS transition. Host readings
+  jitter constantly, so without these the page kept a render loop alive
+  permanently for changes too small to see.
+
+Note for anyone whose Pi shows high idle CPU: check `journalctl --since "1 min
+ago" | wc -l` first. On the machine this was tuned against, a Raspberry Pi
+Connect sign-in loop was consuming roughly 35% of the CPU on its own, and no
+amount of dashboard tuning would have touched it.
+
 ## [1.3.0]
 
 ### Added

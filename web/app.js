@@ -341,6 +341,8 @@ class Dial {
     this.shown = 0;
     this.target = 0;
     this.raf = null;
+    this._offset = null;
+    this._stroke = null;
 
     const path = arcPath(50, 50, 40, DIAL_START, DIAL_START + DIAL_SWEEP);
     const svg = svgEl('svg', { viewBox: '0 0 100 100' });
@@ -379,8 +381,18 @@ class Dial {
   /** percent drives the arc; value/unit/sub are what the user reads. */
   update({ percent, value, unit = '', sub = '', color, decimals = 0, blank = false }) {
     const pct = blank ? 0 : clamp(isNum(percent) ? percent : 0, 0, 100);
-    this.arc.setAttribute('stroke-dashoffset', (100 - pct).toFixed(2));
-    this.arc.setAttribute('stroke', blank ? 'var(--track)' : (color || 'var(--accent)'));
+    const offset = (100 - pct).toFixed(2);
+    const stroke = blank ? 'var(--track)' : (color || 'var(--accent)');
+    // Writing the same value restarts the CSS transition, so the compositor
+    // would animate a nothing-change every poll.
+    if (offset !== this._offset) {
+      this.arc.setAttribute('stroke-dashoffset', offset);
+      this._offset = offset;
+    }
+    if (stroke !== this._stroke) {
+      this.arc.setAttribute('stroke', stroke);
+      this._stroke = stroke;
+    }
     this.unitText.textContent = blank ? '' : unit;
     if (this.subNode.textContent !== (sub || '')) this.subNode.textContent = sub || '';
     this.subNode.title = sub || '';
@@ -396,7 +408,10 @@ class Dial {
 
   animateTo(value, decimals) {
     const animate = !state.config || state.config.ui.animate;
-    if (!animate) {
+    // Readings jitter by fractions constantly. Tweening those keeps a render
+    // loop alive permanently for a change nobody can see, so snap instead.
+    const trivial = Math.abs(value - this.shown) < 0.15 && this.raf === null;
+    if (!animate || trivial) {
       this.cancel();
       this.shown = value;
       this.valueText.firstChild.nodeValue = value.toFixed(decimals);
@@ -466,8 +481,15 @@ function drawChart(canvas, options) {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   if (!width || !height) return;
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
+  // Assigning width/height reallocates the backing store and is far more
+  // expensive than the drawing itself, so only do it when the size changed.
+  // clearRect below handles wiping the previous frame.
+  const backingW = Math.round(width * dpr);
+  const backingH = Math.round(height * dpr);
+  if (canvas.width !== backingW || canvas.height !== backingH) {
+    canvas.width = backingW;
+    canvas.height = backingH;
+  }
 
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1624,6 +1646,10 @@ function renderPi(pi) {
 }
 
 async function poll() {
+  // Deliberately no document.hidden guard here. It looks like free savings,
+  // but a kiosk browser can report hidden in states where the panel is very
+  // much lit, and then the screen stays blank forever. A permanently black
+  // rack display is a far worse outcome than the CPU this would save.
   try {
     const snapshot = await api('/api/state');
     const first = !state.config;
