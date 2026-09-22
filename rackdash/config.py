@@ -30,6 +30,10 @@ DEFAULT_TEMP_STOPS = [[30, "#3fb950"], [50, "#d29922"], [65, "#db6d28"], [80, "#
 
 PAGES = ("overview", "performance", "temps", "vms", "proxmox", "settings")
 
+# The Temps history picker. Ten hours is the ceiling because that is as far
+# back as the fan app is useful to keep; it has to be configured to retain it.
+TEMPS_RANGES = (300, 900, 1800, 3600, 18000, 36000)
+
 # A theme is a whole palette applied across every page. The CSS carries the
 # background/panel/text colours; the accent, the dial ramps and the chart
 # series colours travel in the config because canvas cannot read CSS custom
@@ -95,6 +99,7 @@ def default_config() -> dict:
             # Header type scale, percent. The panel is ~170 dpi, so what looks
             # right on a laptop is half the physical size in a rack.
             "header_scale": 130,
+            "temps_range": 3600,           # seconds; see TEMPS_RANGES
             "pattern": "none",             # see PATTERNS
             "pattern_strength": 100,       # percent, 0 turns the backdrop off
             # Blank means "follow the accent", which is what most people want;
@@ -246,6 +251,8 @@ def normalize(raw: Any) -> dict:
     ui["clock_24h"] = bool(ui_raw.get("clock_24h", ui["clock_24h"]))
     ui["show_pi"] = bool(ui_raw.get("show_pi", ui["show_pi"]))
     ui["header_scale"] = _int(ui_raw.get("header_scale"), 100, 200, ui["header_scale"])
+    temps_range = _int(ui_raw.get("temps_range"), 0, 10 ** 6, ui["temps_range"])
+    ui["temps_range"] = temps_range if temps_range in TEMPS_RANGES else ui["temps_range"]
     ui["pattern"] = _one_of(ui_raw.get("pattern"), PATTERNS, ui["pattern"])
     ui["pattern_strength"] = _int(ui_raw.get("pattern_strength"), 0, 200,
                                   ui["pattern_strength"])

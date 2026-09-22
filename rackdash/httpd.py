@@ -90,6 +90,9 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("request body must be a JSON object")
         return parsed
 
+    def _query(self) -> dict:
+        return parse_qs(urlparse(self.path).query)
+
     def _cross_site_problem(self) -> str | None:
         """Why a state-changing request looks like it came from another site.
 
@@ -162,7 +165,26 @@ class Handler(BaseHTTPRequestHandler):
             self._json(collector.live())
             return
         if route == ["rrd"] and method == "GET":
-            self._json(collector.rrd())
+            timeframe = self._query().get("timeframe", ["hour"])[0]
+            if timeframe not in ("hour", "day", "week", "month"):
+                raise ValueError(f"unknown timeframe: {timeframe}")
+            try:
+                self._json(collector.rrd(timeframe))
+            except Exception as exc:
+                self._error(HTTPStatus.BAD_GATEWAY, str(exc))
+            return
+        if route == ["fan-history"] and method == "GET":
+            query = self._query()
+            try:
+                seconds = int(float(query.get("range", ["3600"])[0]))
+                points = int(float(query.get("points", ["400"])[0]))
+            except ValueError as exc:
+                raise ValueError("range and points must be numbers") from exc
+            try:
+                self._json(collector.fan_history(seconds, points))
+            except Exception as exc:
+                # The fan app being down is an expected state, not a fault here.
+                self._error(HTTPStatus.BAD_GATEWAY, str(exc))
             return
         if route == ["config"]:
             if method == "GET":

@@ -34,39 +34,109 @@
 
   <!-- ------------------------------------------------------- performance -->
   <section class="page" id="page-performance" hidden>
-    <div class="cols-3">
-      <div class="panel">
-        <div class="panel-head"><h2>Processor</h2><span class="tag" id="perf-cpu-tag"></span></div>
+    <div class="cols-3" id="perf-grid">
+      <div class="panel clickable" data-detail="cpu" role="button" tabindex="0">
+        <div class="panel-head"><h2>Processor</h2><span class="tag" id="perf-cpu-tag"></span>
+          <span class="spacer"></span><span class="more" aria-hidden="true">›</span></div>
         <div class="panel-dial" id="perf-cpu-dial"></div>
         <div class="kv" id="perf-cpu-kv"></div>
         <canvas class="spark" id="perf-cpu-chart"></canvas>
       </div>
-      <div class="panel">
-        <div class="panel-head"><h2>Memory</h2><span class="tag" id="perf-mem-tag"></span></div>
+      <div class="panel clickable" data-detail="mem" role="button" tabindex="0">
+        <div class="panel-head"><h2>Memory</h2><span class="tag" id="perf-mem-tag"></span>
+          <span class="spacer"></span><span class="more" aria-hidden="true">›</span></div>
         <div class="panel-dial" id="perf-mem-dial"></div>
         <div class="kv" id="perf-mem-kv"></div>
         <canvas class="spark" id="perf-mem-chart"></canvas>
       </div>
-      <div class="panel">
-        <div class="panel-head"><h2>Network</h2><span class="tag" id="perf-net-tag">1 min avg</span></div>
+      <div class="panel clickable" data-detail="net" role="button" tabindex="0">
+        <div class="panel-head"><h2>Network</h2><span class="tag" id="perf-net-tag">1 hour</span>
+          <span class="spacer"></span><span class="more" aria-hidden="true">›</span></div>
         <div class="panel-dial" id="perf-net-dial"></div>
         <div class="kv" id="perf-net-kv"></div>
         <canvas class="spark" id="perf-net-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- One of the three panels opened to fill the page. -->
+    <div class="detail" id="perf-detail" hidden>
+      <div class="list-head">
+        <button type="button" class="back" id="pd-back">‹ Back</button>
+        <h2 id="pd-title">—</h2>
+        <span class="tag" id="pd-tag"></span>
+        <span class="spacer"></span>
+        <div class="seg" id="pd-timeframe">
+          <button type="button" data-timeframe="hour">Hour</button>
+          <button type="button" data-timeframe="day">Day</button>
+          <button type="button" data-timeframe="week">Week</button>
+        </div>
+      </div>
+      <div class="detail-body">
+        <div class="panel detail-side">
+          <div class="detail-dial" id="pd-dial"></div>
+          <div class="kv detail-kv" id="pd-kv"></div>
+        </div>
+        <div class="panel detail-main">
+          <div class="panel-head"><h2 id="pd-chart-title"></h2><span class="spacer"></span>
+            <span class="hint" id="pd-chart-note"></span></div>
+          <canvas class="spark" id="pd-chart"></canvas>
+        </div>
+        <div class="panel detail-rank">
+          <div class="panel-head"><h2 id="pd-rank-title"></h2><span class="spacer"></span>
+            <span class="hint" id="pd-rank-note"></span></div>
+          <div class="rank" id="pd-rank"></div>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- ------------------------------------------------------------- temps -->
   <section class="page" id="page-temps" hidden>
-    <div class="dials compact" id="temps-dials"></div>
-    <div class="temps-lower">
-      <div class="panel flat">
-        <div class="panel-head"><h2>History</h2><span class="tag" id="temps-range">15 min</span></div>
-        <canvas class="spark tall" id="temps-chart"></canvas>
+    <div class="temps-main" id="temps-main">
+      <div class="dials compact" id="temps-dials"></div>
+      <div class="temps-lower">
+        <div class="panel flat">
+          <div class="panel-head"><h2>History</h2>
+            <button type="button" class="tag range-btn" id="temps-range" aria-haspopup="true">1 hour</button>
+            <span class="spacer"></span><span class="hint" id="temps-range-note"></span></div>
+          <canvas class="spark tall" id="temps-chart"></canvas>
+        </div>
+        <div class="panel flat" id="temps-fans-panel">
+          <div class="panel-head"><h2>Fans</h2><span class="tag" id="temps-fan-tag"></span>
+            <span class="spacer"></span><span class="hint">tap a fan for detail</span></div>
+          <div class="fan-list" id="temps-fans"></div>
+        </div>
       </div>
-      <div class="panel flat" id="temps-fans-panel">
-        <div class="panel-head"><h2>Fans</h2><span class="tag" id="temps-fan-tag"></span></div>
-        <div class="fan-list" id="temps-fans"></div>
+    </div>
+
+    <!-- One fan opened to fill the page. -->
+    <div class="detail" id="fan-detail" hidden>
+      <div class="list-head">
+        <button type="button" class="back" id="fd-back">‹ Back</button>
+        <h2 id="fd-title">—</h2>
+        <span class="tag" id="fd-type"></span>
+        <span class="tag" id="fd-reason"></span>
+        <span class="spacer"></span>
+        <button type="button" class="tag range-btn" id="fd-range" aria-haspopup="true">1 hour</button>
+      </div>
+      <div class="detail-body fan-body">
+        <div class="panel detail-side">
+          <div class="fd-dials" id="fd-dials"></div>
+          <div class="kv detail-kv" id="fd-kv"></div>
+        </div>
+        <div class="panel detail-curve">
+          <div class="panel-head"><h2>Curve</h2><span class="spacer"></span>
+            <span class="hint" id="fd-curve-note"></span></div>
+          <canvas class="spark" id="fd-curve"></canvas>
+        </div>
+        <div class="panel detail-main">
+          <div class="panel-head"><h2>Duty &amp; control temperature</h2><span class="spacer"></span>
+            <span class="hint" id="fd-duty-note"></span></div>
+          <canvas class="spark" id="fd-chart-duty"></canvas>
+          <div class="panel-head"><h2>Speed</h2><span class="spacer"></span>
+            <span class="hint" id="fd-rpm-note"></span></div>
+          <canvas class="spark" id="fd-chart-rpm"></canvas>
+        </div>
       </div>
     </div>
   </section>
@@ -271,6 +341,7 @@
   </section>
 </main>
 
+<div class="range-menu" id="range-menu" role="menu" hidden></div>
 <div id="dim" hidden></div>
 <div class="toast" id="toast"></div>
 

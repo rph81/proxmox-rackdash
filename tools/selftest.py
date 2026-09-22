@@ -98,6 +98,10 @@ def test_config_normalisation():
           cfg.normalize({"ui": {"glow_color": "   "}})["ui"]["glow_color"], "")
     check("bad glow colour rejected",
           cfg.normalize({"ui": {"glow_color": "rebeccapurple"}})["ui"]["glow_color"], "")
+    check("default temps range is an hour", base["ui"]["temps_range"], 3600)
+    check("offered range accepted", cfg.normalize({"ui": {"temps_range": 36000}})["ui"]["temps_range"], 36000)
+    check("unoffered range falls back",
+          cfg.normalize({"ui": {"temps_range": 4242}})["ui"]["temps_range"], 3600)
     kept = cfg.merge(cfg.normalize({"ui": {"pattern": "circuit"}}),
                      {"ui": {"theme": "bambu"}})["ui"]
     check("changing theme keeps the backdrop", kept["pattern"], "circuit")
@@ -155,6 +159,10 @@ def test_proxmox_shaping():
     check("empty bucket becomes a gap, not zero", rrd["cpu"], [50.0, None, 25.0])
     check("memory computed from the pair", rrd["memory"], [40.0, None, 60.0])
     check("absent netin is a gap", rrd["netin"], [1000.0, None, None])
+    swap = proxmox.shape_rrd([{"time": 1, "swaptotal": 200, "swapused": 50, "loadavg": "1.5"},
+                              {"time": 2, "swaptotal": 0, "swapused": 0}])
+    check("swap percent from the pair", swap["swap"], [25.0, None])
+    check("load average kept", swap["load"], [1.5, None])
 
     guests = proxmox.shape_guests([
         {"type": "qemu", "vmid": 101, "name": "beta", "node": "pve", "status": "stopped",
@@ -254,6 +262,27 @@ def test_fanctl_selection():
           fanctl_module.shape(missing)["sensors"][0]["value"], None)
 
     check("empty state is safe", fanctl_module.shape({})["sensors"], [])
+
+    # The fan detail view draws each fan's curve and names what drives it.
+    state["config"]["fans"][0]["curve"] = [[50, 90], [30, 20], ["x", 5], [40, "45"]]
+    state["config"]["fans"][0]["min_duty"] = 20
+    detail = fanctl_module.shape(state)["fans"][0]
+    check("curve sorted, malformed point dropped", detail["curve"],
+          [[30.0, 20.0], [40.0, 45.0], [50.0, 90.0]])
+    check("sensor labels resolved", detail["sensor_labels"], ["Disk · Hottest drive"])
+    check("duty limits carried", detail["min_duty"], 20)
+
+    # History comes back from the fan app with fan indexes as JSON strings.
+    history = fanctl_module.shape_history([
+        {"t": 100, "temps": {"a": 40.0, "b": 41.0, "noise": 99}, "rpm": {"1": 900}, "duty": {"1": 50}},
+        {"t": 102, "temps": {"a": 42.0}, "rpm": {1: 950}, "duty": {"1": 55}},
+        {"no": "timestamp"},
+    ], ["a", "b"], [1, 3])
+    check("timestamps kept, bad sample skipped", history["time"], [100.0, 102.0])
+    check("only wanted sensors", sorted(history["temps"]), ["a", "b"])
+    check("missing reading is a gap", history["temps"]["b"], [41.0, None])
+    check("string and integer fan keys both read", history["rpm"]["1"], [900, 950])
+    check("absent fan is all gaps", history["duty"]["3"], [None, None])
     check("a fan with no sensors contributes nothing",
           fanctl_module.selected_sensor_ids({"config": {"fans": [
               {"index": 1, "enabled": True, "mode": "curve", "sensors": []}]}}), [])
@@ -296,8 +325,13 @@ class _StubCollector:
     def live(self):
         return {"system": {}, "temps": {}}
 
-    def rrd(self):
-        return {}
+    def rrd(self, timeframe="hour"):
+        self.calls.append(("rrd", timeframe))
+        return {"time": [], "timeframe": timeframe}
+
+    def fan_history(self, seconds, points=400):
+        self.calls.append(("fan_history", seconds, points))
+        return {"time": [], "range": seconds}
 
     def update_config(self, patch):
         self.calls.append(patch)
@@ -360,6 +394,17 @@ def test_http():
         check("bad guest type refused", request("GET", "/api/guest/root/1")[0], 400)
         check("non-numeric vmid refused", request("GET", "/api/guest/qemu/abc")[0], 400)
         check("path traversal refused", request("GET", "/api/guest/qemu/..%2f..%2fetc")[0], 400)
+
+        # Detail views ask for longer node history; the timeframe reaches the
+        # Proxmox API, so anything outside the known set is refused here.
+        check("day history served", request("GET", "/api/rrd?timeframe=day")[0], 200)
+        check("timeframe passed through", stub.calls[-1], ("rrd", "day"))
+        check("unknown timeframe refused", request("GET", "/api/rrd?timeframe=decade")[0], 400)
+        check("fan history served",
+              request("GET", "/api/fan-history?range=36000&points=450")[0], 200)
+        check("fan history args parsed", stub.calls[-1], ("fan_history", 36000, 450))
+        check("non-numeric range refused",
+              request("GET", "/api/fan-history?range=forever")[0], 400)
 
         check("unknown route is 404", request("GET", "/api/nope")[0], 404)
         check("static traversal blocked", request("GET", "/../rackdash/config.py")[0], 404)

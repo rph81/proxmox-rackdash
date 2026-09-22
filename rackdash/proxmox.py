@@ -241,7 +241,7 @@ def shape_rrd(rows: list) -> dict:
     built with None gaps rather than assumed zeros.
     """
     series = {"time": [], "cpu": [], "memory": [], "netin": [], "netout": [],
-              "diskread": [], "diskwrite": [], "iowait": []}
+              "diskread": [], "diskwrite": [], "iowait": [], "swap": [], "load": []}
     if not isinstance(rows, list):
         return series
 
@@ -257,6 +257,12 @@ def shape_rrd(rows: list) -> dict:
         total = _as_float(row.get("memtotal"), 0.0) or 0.0
         used = _as_float(row.get("memused"))
         series["memory"].append(used / total * 100.0 if used is not None and total else None)
+
+        swap_total = _as_float(row.get("swaptotal"), 0.0) or 0.0
+        swap_used = _as_float(row.get("swapused"))
+        series["swap"].append(swap_used / swap_total * 100.0
+                              if swap_used is not None and swap_total else None)
+        series["load"].append(_as_float(row.get("loadavg")))
 
         for key in ("netin", "netout", "diskread", "diskwrite"):
             series[key].append(_as_float(row.get(key)))

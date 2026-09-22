@@ -119,11 +119,48 @@ temperature sensors were picked up from the fan controller.
 |---|---|
 | **Overview** | One dial per metric: CPU, memory, root disk, network, then one per selected temperature sensor. Below: load average, guest count, fullest pool, hottest sensor, average fan speed. |
 | **Header** | The Pi's own SoC temperature, CPU load and GPU load, badged `PI` to keep them apart from the hypervisor's numbers. |
-| **Usage** | Processor, memory and network in detail — model, load averages, I/O wait, swap, receive/transmit, one-hour peak — each with a live chart. |
-| **Temps** | Large dials for the selected sensors, a shared history chart, and every fan channel with its RPM and duty. |
+| **Usage** | Processor, memory and network, each charted over the same last hour. Tap any of the three to open it full page. |
+| **Temps** | Large dials for the selected sensors, a history chart with a 5 minute to 10 hour range picker, and every fan channel. Tap a fan to open it. |
 | **VMs** | Every VM and container as a tile with live CPU and memory bars. Tap one for its own dials and hour/day/week history. |
 | **Node** | Proxmox and kernel versions, CPU model, uptime, storage pools and recent tasks. |
 | **Settings** | Themes, accent, dial colour ramps, screen behaviour and source status. |
+
+## Detail views
+
+Anything with a `›` opens to fill its page, and **‹ Back** returns. Leaving the
+page closes it, so coming back always lands on the overview.
+
+| Tap | You get |
+|---|---|
+| **Processor** | Model, clock, load averages and load per thread, I/O wait, average and peak; CPU and I/O wait charted with an average line; the busiest guests ranked |
+| **Memory** | Used, free, how much has been given to guests, swap, average and peak; memory and swap charted; the largest guests ranked |
+| **Network** | Live rates, peaks, total received and sent over the period, peak link use; throughput charted; the top talkers ranked from live per-guest counters |
+| **A fan** | Duty and control temperature dials, the fan's curve with where it is running right now, and its duty, control temperature and speed history |
+
+The Usage views switch between the last hour, day and week. A fan's view
+follows the Temps range picker.
+
+All three Usage charts on the overview read the same source, Proxmox's
+one-minute RRD, over exactly the same last hour, so their time axes line up.
+The last point on each is the live reading, so a line ends at the value its
+dial shows. Charts are positioned by time rather than by sample, which is what
+lets series with different resolutions share an axis.
+
+A 2-wire fan has no tachometer, so the controller reports `0 rpm` while it
+is plainly running. A channel that has never reported a speed is shown as
+*no speed signal* rather than as a stalled fan.
+
+### Temperature history
+
+The Temps chart and each fan's history come from corsair-fanctl's own recorded
+history, which it keeps on disk across restarts, so nothing is stored on the
+Pi. Tap the range next to **History** for 5, 15 or 30 minutes, or 1, 5 or
+10 hours; the choice is saved.
+
+corsair-fanctl keeps 7 hours by default. For the 10 hour range to fill, raise
+**History retained** in its Settings to `36000`. When less history exists than
+the range asks for, the chart says how much there is rather than leaving an
+unexplained gap.
 
 ## Temperatures follow your fan curves
 
@@ -297,7 +334,8 @@ application/json`, so a page in another browser tab cannot reconfigure it.
 |---|---|---|
 | `GET` | `/api/state` | Everything the pages draw, config included (secrets redacted) |
 | `GET` | `/api/live` | Short high-resolution series for the sparklines |
-| `GET` | `/api/rrd` | The node's Proxmox RRD series |
+| `GET` | `/api/rrd?timeframe=hour` | The node's Proxmox RRD series; `hour`, `day`, `week` or `month` |
+| `GET` | `/api/fan-history?range=3600&points=400` | corsair-fanctl's recorded sensor, rpm and duty history, proxied |
 | `GET` | `/api/guest/{qemu,lxc}/<vmid>?timeframe=hour` | One guest's status and history |
 | `GET` / `PUT` | `/api/config` | Read or patch the config (partial PUTs merge) |
 | `POST` | `/api/refresh` | Poll both sources immediately |

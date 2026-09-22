@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -56,9 +56,12 @@ GUESTS = [
 ]
 
 FAN_CHANNELS = [
-    {"index": 1, "name": "80mm x 3 - Drives Exhaust", "sensors": ["arcconf:1:max"], "type": "PWM"},
-    {"index": 2, "name": "92mm x2 - Rear Exhaust", "sensors": ["hwmon:coretemp:temp1"], "type": "PWM"},
-    {"index": 3, "name": "SAS Card", "sensors": ["cpro:temp1"], "type": "DC (forced)"},
+    {"index": 1, "name": "80mm x 3 - Drives Exhaust", "sensors": ["arcconf:1:max"], "type": "PWM",
+     "curve": [[35, 20], [40, 35], [45, 60], [50, 85], [55, 100]]},
+    {"index": 2, "name": "92mm x2 - Rear Exhaust", "sensors": ["hwmon:coretemp:temp1"], "type": "PWM",
+     "curve": [[30, 20], [45, 40], [60, 70], [75, 100]]},
+    {"index": 3, "name": "SAS Card", "sensors": ["cpro:temp1"], "type": "DC (forced)",
+     "curve": [[25, 35], [35, 50], [45, 80], [55, 100]]},
     {"index": 4, "name": "Fan 4", "sensors": [], "type": None},
     {"index": 5, "name": "Fan 5", "sensors": [], "type": None},
     {"index": 6, "name": "Fan 6", "sensors": [], "type": None},
@@ -96,8 +99,74 @@ class World:
                       "disk1": 41.0, "disk2": 43.0}
         self.duties = {1: 50.0, 2: 44.0, 3: 51.0}
         self.history: list = []          # one bucket a minute, like PVE's RRD
+        self.fan_samples: list = []      # what corsair-fanctl's /api/history returns
+        self._seed_fan_history()
         self.guest_history: dict = {str(g["vmid"]): [] for g in GUESTS}
         self._seed_history()
+
+    def fan_temps(self) -> dict:
+        return {
+            "cpro:temp1": round(self.temps["probe1"], 1),
+            "cpro:temp2": round(self.temps["probe2"], 1),
+            "hwmon:coretemp:temp1": round(self.temps["cpu"], 1),
+            "hwmon:coretemp:temp2": round(self.temps["cpu"] - 1.5, 1),
+            "hwmon:acpitz:temp1": 27.8,
+            "hwmon:nvme:temp1": round(self.temps["nvme"], 1),
+            "arcconf:1:slot1": round(self.temps["disk1"], 1),
+            "arcconf:1:slot2": round(self.temps["disk2"], 1),
+            "arcconf:1:max": round(max(self.temps["disk1"], self.temps["disk2"]), 1),
+        }
+
+    def _fan_sample(self, stamp: float, temps: dict, duties: dict) -> dict:
+        return {"t": stamp, "temps": temps,
+                "rpm": {str(i): (0 if i == 3 else int(300 + d * 16)) for i, d in duties.items()},
+                "duty": {str(i): round(d, 1) for i, d in duties.items()}}
+
+    def _seed_fan_history(self):
+        """Ten hours at 30 s, shaped like a real day: a warm afternoon, a
+        backup job that heats the drives, and the fans chasing both."""
+        now = time.time()
+        for step in range(1200):
+            stamp = now - (1200 - step) * 30
+            phase = step / 1200 * math.pi * 2
+            job = math.exp(-((step - 820) / 60.0) ** 2) * 9      # a backup at ~3h ago
+            cpu = 44 + 8 * math.sin(phase * 1.3) + 3 * math.sin(phase * 7.1)
+            disk = 41 + 3 * math.sin(phase * 0.8) + job
+            probe = 27 + 4 * math.sin(phase * 0.9) + job * 0.4
+            temps = {"cpro:temp1": round(probe, 1), "cpro:temp2": round(probe - 2.5, 1),
+                     "hwmon:coretemp:temp1": round(cpu, 1),
+                     "hwmon:coretemp:temp2": round(cpu - 1.5, 1),
+                     "hwmon:acpitz:temp1": 27.8, "hwmon:nvme:temp1": round(cpu - 6, 1),
+                     "arcconf:1:slot1": round(disk - 1, 1), "arcconf:1:slot2": round(disk, 1),
+                     "arcconf:1:max": round(disk, 1)}
+            duties = {1: _curve(disk, [(35, 20), (40, 35), (45, 60), (50, 85), (55, 100)]),
+                      2: _curve(cpu, [(30, 20), (45, 40), (60, 70), (75, 100)]),
+                      3: _curve(probe, [(25, 35), (35, 50), (45, 80), (55, 100)])}
+            self.fan_samples.append(self._fan_sample(stamp, temps, duties))
+
+    def rrd_for(self, timeframe: str) -> list:
+        """Proxmox RRD rows for longer timeframes, 70 buckets like the real API."""
+        if timeframe == "hour":
+            return list(self.history)
+        span = {"day": 86400, "week": 604800, "month": 2592000}.get(timeframe, 86400)
+        step = span * 1.1 / 70
+        now = time.time()
+        rows = []
+        for index in range(70):
+            phase = index / 70 * math.pi * (6 if timeframe == "week" else 2)
+            spike = math.exp(-((index - 48) / 3.0) ** 2) * 0.35
+            cpu = max(0.03, 0.2 + 0.12 * math.sin(phase) + spike)
+            rows.append({
+                "time": int(now - (70 - index) * step), "cpu": cpu,
+                "iowait": 0.01 + spike * 0.1, "loadavg": cpu * 6,
+                "memtotal": self.mem_total,
+                "memused": self.mem_total * (0.3 + 0.06 * math.sin(phase * 0.5) + spike * 0.2),
+                "swaptotal": 8 * GIB, "swapused": 0.6 * GIB + spike * GIB,
+                "netin": max(0.0, 4e6 + 3e6 * math.sin(phase * 1.7) + spike * 4e7),
+                "netout": max(0.0, 1.2e6 + 8e5 * math.sin(phase * 1.1) + spike * 9e6),
+                "diskread": 2e6 * abs(math.sin(phase)), "diskwrite": 3e6 * abs(math.cos(phase)),
+            })
+        return rows
 
     def _seed_history(self):
         now = time.time()
@@ -110,6 +179,7 @@ class World:
                 "iowait": max(0.0, 0.02 + 0.02 * math.sin(phase * 1.7)),
                 "memtotal": self.mem_total,
                 "memused": self.mem_total * (0.28 + 0.05 * math.sin(phase * 0.7)),
+                "swaptotal": 8 * GIB, "swapused": 0.6 * GIB, "loadavg": 1.5,
                 "netin": max(0.0, 4.0e6 + 3.4e6 * math.sin(phase * 1.3) + random.uniform(-6e5, 6e5)),
                 "netout": max(0.0, 1.2e6 + 9e5 * math.sin(phase * 0.9) + random.uniform(-2e5, 2e5)),
                 "diskread": max(0.0, 2.0e6 * abs(math.sin(phase * 2.1))),
@@ -168,10 +238,16 @@ class World:
             self.duties[3] = _curve(self.temps["probe1"], [(25, 35), (35, 50), (45, 80), (55, 100)])
 
             now = time.time()
+            if not self.fan_samples or now - self.fan_samples[-1]["t"] >= 2:
+                self.fan_samples.append(self._fan_sample(now, self.fan_temps(), dict(self.duties)))
+                cutoff = now - 36000
+                while self.fan_samples and self.fan_samples[0]["t"] < cutoff:
+                    self.fan_samples.pop(0)
             if not self.history or now - self.history[-1]["time"] >= 60:
                 self.history.append({
                     "time": int(now), "cpu": self.cpu, "iowait": 0.02 * self.load,
                     "memtotal": self.mem_total, "memused": self.mem_used,
+                    "swaptotal": 8 * GIB, "swapused": 0.6 * GIB, "loadavg": self.load * 6,
                     "netin": self.net_in, "netout": self.net_out,
                     "diskread": 1.5e6 * self.load, "diskwrite": 2.2e6 * self.load,
                 })
@@ -307,8 +383,9 @@ class FakeProxmox(BaseHTTPRequestHandler):
             if tail == ["status"]:
                 self._json(WORLD.node_status()); return
             if tail == ["rrddata"]:
+                timeframe = parse_qs(urlparse(self.path).query).get("timeframe", ["hour"])[0]
                 with WORLD.lock:
-                    self._json(list(WORLD.history)); return
+                    self._json(WORLD.rrd_for(timeframe)); return
             if tail == ["storage"]:
                 self._json([
                     {"storage": "local", "type": "dir", "active": 1, "total": 100 * GIB,
@@ -367,8 +444,32 @@ class FakeFanctl(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def _send(self, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
-        if urlparse(self.path).path != "/api/state":
+        path = urlparse(self.path).path
+        if path == "/api/history":
+            # Same contract as corsair-fanctl: samples since `since`, decimated
+            # to at most `points`, newest always kept.
+            query = parse_qs(urlparse(self.path).query)
+            since = float(query.get("since", ["0"])[0] or 0)
+            points = int(query.get("points", ["600"])[0] or 600)
+            with WORLD.lock:
+                picked = [s for s in WORLD.fan_samples if s["t"] >= since]
+            if len(picked) > points:
+                stride = len(picked) / points
+                last = picked[-1]
+                picked = [picked[int(i * stride)] for i in range(points)]
+                picked[-1] = last
+            self._send({"samples": picked})
+            return
+        if path != "/api/state":
             self.send_error(404)
             return
         with WORLD.lock:
@@ -396,7 +497,8 @@ class FakeFanctl(BaseHTTPRequestHandler):
             "fans": [{"index": f["index"],
                       "duty": round(duties.get(f["index"], 0.0), 1),
                       "target": round(duties.get(f["index"], 0.0), 1),
-                      "rpm": int(300 + duties.get(f["index"], 0) * 16) if f["type"] == "PWM" else None,
+                      "rpm": (int(300 + duties.get(f["index"], 0) * 16) if f["type"] == "PWM"
+                              else 0 if f["type"] else None),
                       "control_temp": temps.get(f["sensors"][0]) if f["sensors"] else None,
                       "override": False,
                       "reason": "curve" if f["sensors"] else "no-sensors"}
@@ -419,7 +521,10 @@ class FakeFanctl(BaseHTTPRequestHandler):
             "config": {
                 "fans": [{"index": f["index"], "name": f["name"], "enabled": True,
                           "mode": "curve" if f["sensors"] else "off",
-                          "sensors": f["sensors"], "mix": "max"} for f in FAN_CHANNELS],
+                          "sensors": f["sensors"], "mix": "max",
+                          "curve": f.get("curve") or [[30, 20], [70, 100]],
+                          "min_duty": 20, "max_duty": 100, "fixed_duty": 50,
+                          "stop_below": None} for f in FAN_CHANNELS],
                 "http": {"bind": "0.0.0.0", "port": 8899, "auth_token": None},
             },
         }

@@ -3,6 +3,35 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.4.0]
+
+### Added
+- **Usage detail views.** Tap Processor, Memory or Network to open it full
+  page: a large dial, every figure for it, a large chart with an average line,
+  and a ranked list — the busiest guests by CPU, the largest by memory, or the
+  top network talkers. Each switches between the last hour, day and week.
+- **Fan detail view.** Tap a fan on the Temps page for its duty and control
+  temperature dials, its curve with the live operating point marked, and its
+  duty, control temperature and speed history.
+- **Temps range picker.** Tap the range beside History for 5, 15 or 30
+  minutes, or 1, 5 or 10 hours. The choice is saved.
+- Temperature and fan history now come from corsair-fanctl's own recorded
+  history, proxied through `/api/fan-history`, rather than a five-minute
+  buffer on the Pi. `/api/rrd` accepts a `timeframe`.
+
+### Changed
+- The three Usage charts now cover exactly the same last hour from the same
+  source. Previously CPU and memory drew a five-minute live buffer beside an
+  hour of network history, so their axes disagreed.
+- Charts are positioned by time rather than by sample index, so series of
+  different resolutions share an axis. Fills are gradients, the newest reading
+  is marked, and the legend sits above the plot instead of over it.
+
+### Fixed
+- A 2-wire fan reads `0 rpm` while running because it has no tachometer. It
+  is now shown as "no speed signal" rather than as a stalled fan, on both the
+  fan card and its detail view.
+
 ## [1.3.3]
 
 ### Added

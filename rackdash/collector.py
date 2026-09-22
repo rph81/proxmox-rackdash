@@ -25,6 +25,11 @@ LOG = logging.getLogger("rackdash.collector")
 
 LIVE_SECONDS = 300.0        # how much live detail the sparklines keep
 RRD_REFRESH = 60.0          # Proxmox RRD only advances once a minute
+# How long a detail view's history may be reused. Longer timeframes have
+# coarser buckets that advance less often, so they are fetched less often.
+RRD_TTL = {"hour": 60.0, "day": 300.0, "week": 1800.0, "month": 3600.0}
+FAN_HISTORY_TTL = 4.0       # a held-open chart polls this; keep the fan app calm
+FAN_HISTORY_MAX_RANGE = 36000   # ten hours, the longest the Temps picker offers
 SLOW_REFRESH = 15.0         # guests, storage, tasks: cheap but not per-tick
 DISK_REFRESH = 300.0        # physical disks change even less often
 
@@ -80,6 +85,8 @@ class Collector:
         self._netstat_at: float | None = None
         self._talkers: list = []
         self._guest_cache: dict = {}     # (kind, vmid, timeframe) -> (when, payload)
+        self._rrd_cache: dict = {}       # timeframe -> (when, shaped series)
+        self._fan_history_cache: dict = {}   # (range, points) -> (when, payload)
 
         self._temps: dict = {"connected": False, "sensors": [], "fans": [],
                              "storage": {"enabled": False, "drives": []}}
@@ -414,9 +421,72 @@ class Collector:
     def live(self) -> dict:
         return {"system": self._live.series(), "temps": self._temp_live.series()}
 
-    def rrd(self) -> dict:
+    def rrd(self, timeframe: str = "hour") -> dict:
+        """Node history for a timeframe.
+
+        The hour series is what the poll thread already keeps fresh. Longer
+        ones back the detail views and are fetched on demand, cached for as
+        long as their buckets take to advance.
+        """
+        if timeframe == "hour":
+            with self._lock:
+                if self._rrd:
+                    return dict(self._rrd)
+        if timeframe not in RRD_TTL:
+            raise ValueError(f"unknown timeframe: {timeframe}")
+
+        now = time.monotonic()
+        cached = self._rrd_cache.get(timeframe)
+        if cached and now - cached[0] < RRD_TTL[timeframe]:
+            return cached[1]
         with self._lock:
-            return dict(self._rrd)
+            client, node = self._pve, self._node
+        if not node:
+            raise proxmox.ProxmoxError("no Proxmox node resolved yet")
+        shaped = proxmox.shape_rrd(client.node_rrd(node, timeframe))
+        self._rrd_cache[timeframe] = (now, shaped)
+        return shaped
+
+    def fan_history(self, seconds: int, points: int = 400) -> dict:
+        """The fan app's recorded history for the last `seconds`.
+
+        Proxied rather than fetched by the browser: the page may only talk to
+        its own origin, and the fan app may need a token the page never sees.
+        """
+        seconds = max(60, min(FAN_HISTORY_MAX_RANGE, int(seconds)))
+        points = max(20, min(1000, int(points)))
+        key = (seconds, points)
+        now = time.monotonic()
+        cached = self._fan_history_cache.get(key)
+        if cached and now - cached[0] < FAN_HISTORY_TTL:
+            return cached[1]
+
+        with self._lock:
+            client = self._fanctl
+            enabled = self.config["fanctl"]["enabled"]
+            shown = [s["id"] for s in self._temps.get("sensors", [])]
+            fans = list(self._temps.get("fans", []))
+        if not enabled:
+            raise fanctl_module.FanctlError("the fan app is disabled in the config")
+
+        # Every sensor a fan follows is included as well as the ones on show,
+        # so a fan's detail view can always rebuild its control temperature.
+        wanted = list(shown)
+        for fan in fans:
+            for sid in fan.get("sensors") or []:
+                if sid not in wanted:
+                    wanted.append(sid)
+        indexes = [f.get("index") for f in fans if f.get("index") is not None]
+
+        samples = client.history(time.time() - seconds, points)
+        payload = fanctl_module.shape_history(samples, wanted, indexes)
+        payload["range"] = seconds
+        payload["oldest"] = payload["time"][0] if payload["time"] else None
+        self._fan_history_cache[key] = (now, payload)
+        if len(self._fan_history_cache) > 16:
+            oldest = min(self._fan_history_cache, key=lambda k: self._fan_history_cache[k][0])
+            self._fan_history_cache.pop(oldest, None)
+        return payload
 
     def update_config(self, raw: dict) -> dict:
         with self._lock:

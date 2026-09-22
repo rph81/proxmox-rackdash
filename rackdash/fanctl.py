@@ -16,6 +16,7 @@ import json
 import logging
 import socket
 import urllib.error
+import urllib.parse
 import urllib.request
 
 LOG = logging.getLogger("rackdash.fanctl")
@@ -36,9 +37,28 @@ class Fanctl:
         return bool(self.url)
 
     def state(self) -> dict:
+        payload = self._get("/api/state")
+        if not isinstance(payload, dict):
+            raise FanctlError("fan controller returned an unexpected payload")
+        return payload
+
+    def history(self, since: float, points: int = 400) -> list:
+        """The fan app's own recorded samples since `since` (epoch seconds).
+
+        corsair-fanctl keeps this history on disk across restarts, and each
+        sample carries every sensor reading plus each fan's rpm and duty, so a
+        long temperature chart or a single fan's history needs nothing stored
+        on the Pi.
+        """
+        query = urllib.parse.urlencode({"since": f"{since:.0f}", "points": int(points)})
+        payload = self._get(f"/api/history?{query}")
+        samples = payload.get("samples") if isinstance(payload, dict) else None
+        return samples if isinstance(samples, list) else []
+
+    def _get(self, path: str):
         if not self.configured:
             raise FanctlError("fan controller URL is not configured")
-        request = urllib.request.Request(f"{self.url}/api/state", method="GET")
+        request = urllib.request.Request(f"{self.url}{path}", method="GET")
         request.add_header("Accept", "application/json")
         if self.token:
             request.add_header("X-Auth-Token", self.token)
@@ -61,9 +81,6 @@ class Fanctl:
             raise FanctlError(f"fan controller timed out after {self.timeout:g}s") from exc
         except (ValueError, OSError) as exc:
             raise FanctlError(f"bad response from the fan controller: {exc}") from exc
-
-        if not isinstance(payload, dict):
-            raise FanctlError("fan controller returned an unexpected payload")
         return payload
 
 
@@ -153,6 +170,17 @@ def shape(state: dict, source: str = "fanctl-selected",
             "duty": snapshot.get("duty"),
             "control_temp": snapshot.get("control_temp"),
             "reason": snapshot.get("reason") or "",
+            # What the detail view needs to draw the fan's curve and explain
+            # which readings drive it.
+            "sensors": [sid for sid in (fan.get("sensors") or []) if isinstance(sid, str)],
+            "sensor_labels": [labels.get(sid, sid) for sid in (fan.get("sensors") or [])
+                              if isinstance(sid, str)],
+            "mix": fan.get("mix") or "max",
+            "curve": _clean_curve(fan.get("curve")),
+            "fixed_duty": fan.get("fixed_duty"),
+            "min_duty": fan.get("min_duty"),
+            "max_duty": fan.get("max_duty"),
+            "stop_below": fan.get("stop_below"),
         })
 
     return {
@@ -163,6 +191,49 @@ def shape(state: dict, source: str = "fanctl-selected",
         "fans": fans,
         "storage": _shape_storage(state),
     }
+
+
+def _clean_curve(raw) -> list:
+    """[[temp, duty], ...] with anything malformed dropped."""
+    points = []
+    for item in raw if isinstance(raw, list) else []:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            try:
+                points.append([float(item[0]), float(item[1])])
+            except (TypeError, ValueError):
+                continue
+    points.sort(key=lambda p: p[0])
+    return points
+
+
+def shape_history(samples: list, sensor_ids: list, fan_indexes: list) -> dict:
+    """Turn the fan app's samples into parallel series keyed for the charts.
+
+    Each sample is {t, temps: {id: C}, rpm: {index: rpm}, duty: {index: %}}.
+    JSON turns the integer fan indexes into strings, so both are accepted and
+    the output is keyed by string. Only the sensors and fans the dashboard can
+    show are kept, which keeps a ten-hour payload small.
+    """
+    out = {"time": [],
+           "temps": {sid: [] for sid in sensor_ids},
+           "rpm": {str(i): [] for i in fan_indexes},
+           "duty": {str(i): [] for i in fan_indexes}}
+    for sample in samples if isinstance(samples, list) else []:
+        if not isinstance(sample, dict) or not isinstance(sample.get("t"), (int, float)):
+            continue
+        out["time"].append(round(float(sample["t"]), 1))
+        temps = sample.get("temps") if isinstance(sample.get("temps"), dict) else {}
+        rpm = sample.get("rpm") if isinstance(sample.get("rpm"), dict) else {}
+        duty = sample.get("duty") if isinstance(sample.get("duty"), dict) else {}
+        for sid in sensor_ids:
+            value = temps.get(sid)
+            out["temps"][sid].append(value if isinstance(value, (int, float)) else None)
+        for index in fan_indexes:
+            key = str(index)
+            for name, source in (("rpm", rpm), ("duty", duty)):
+                value = source.get(key, source.get(index))
+                out[name][key].append(value if isinstance(value, (int, float)) else None)
+    return out
 
 
 def _shape_storage(state: dict) -> dict:

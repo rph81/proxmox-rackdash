@@ -690,6 +690,73 @@ input:focus, select:focus, button:focus-visible {
 .stop .stop-at { flex: 0 0 62px; }
 .stop .stop-preview { flex: 1; height: 6px; border-radius: 3px; }
 
+/* ---------------------------------------------------------- detail views
+   A panel or fan opened to fill its page. Everything a finger can open
+   shows a chevron and lights its border while pressed, so the panel reads
+   as a control rather than a static readout. */
+
+.panel.clickable { cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.panel.clickable:active,
+.panel.clickable:focus-visible { border-color: var(--accent); background: var(--panel-2); }
+.more { font-size: 22px; line-height: 1; color: var(--muted); margin-top: -3px; }
+.panel.clickable:active .more { color: var(--accent-strong); }
+
+.detail { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.detail-body {
+  flex: 1; min-height: 0; display: grid; gap: 9px;
+  grid-template-columns: 258px minmax(0, 1fr) 250px;
+}
+.detail-body.fan-body { grid-template-columns: 236px 300px minmax(0, 1fr); }
+.detail-body .panel { min-height: 0; }
+.detail-main .spark, .detail-curve .spark { min-height: 60px; }
+.list-head h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 36%; }
+
+.detail-dial { flex: 0 0 auto; height: 112px; display: flex; justify-content: center; }
+.detail-dial .dial svg { max-height: 112px; }
+.detail-dial .dial .dial-label, .detail-dial .dial .dial-sub { display: none; }
+
+.fd-dials { flex: 0 0 auto; height: 104px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.fd-dials .dial svg { max-height: 82px; }
+.fd-dials .dial .dial-sub { display: none; }
+
+.detail-kv { font-size: 13px; gap: 4px 10px; }
+.detail-kv dd { font-variant-numeric: tabular-nums; }
+
+.rank { display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.rank-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; }
+.rank-row .rank-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.rank-row .rank-val { font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.rank-row .rank-bar { grid-column: 1 / -1; height: 5px; background: var(--track);
+                      border-radius: 3px; overflow: hidden; }
+.rank-row .rank-bar i { display: block; height: 100%; border-radius: 3px; transition: width .4s ease; }
+.rank-row .rank-sub { grid-column: 1 / -1; font-size: 11px; color: var(--muted); margin-top: -1px;
+                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.fan { cursor: pointer; transition: border-color .15s ease; }
+.fan:active { border-color: var(--accent); background: var(--panel-2); }
+
+.temps-main { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* The range tag is a button that opens the picker. */
+.range-btn { cursor: pointer; background: var(--panel-2); color: var(--text);
+             font: inherit; font-size: 12px; min-height: 26px; padding: 3px 9px; }
+.range-btn::after { content: " ▾"; color: var(--muted); }
+.range-btn[aria-expanded="true"] { border-color: var(--accent); }
+
+.range-menu {
+  position: fixed; z-index: 55; display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 5px; padding: 7px; min-width: 250px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+}
+.range-menu button {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 7px; font: inherit; font-size: 14px; padding: 9px 8px; min-height: 42px;
+  cursor: pointer; white-space: nowrap;
+}
+.range-menu button[aria-checked="true"] { background: var(--accent-dim); color: var(--accent-strong);
+                                          border-color: var(--accent); }
+
 /* ------------------------------------------------------------------ misc */
 
 #dim {

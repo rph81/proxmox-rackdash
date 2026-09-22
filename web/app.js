@@ -148,6 +148,15 @@ const state = {
   dials: new Map(),
   charts: new Map(),
   guest: null,            // { type, id, timeframe, payload, prevNet }
+  usageDetail: null,      // 'cpu' | 'mem' | 'net' when a Usage panel is open
+  detailTimeframe: 'hour',
+  detailRrd: null,        // { timeframe, data, at } for day and week
+  detailError: null,
+  fanHistory: null,       // the fan app's history for the Temps range
+  fanHistoryAt: 0,
+  fanHistoryError: null,
+  fanDetail: null,        // fan index when a fan is open
+  rangeAnchor: null,      // the button the range picker is open under
   lastTouch: Date.now(),
   dimmed: false,
   rotateAt: 0,
@@ -476,8 +485,27 @@ function cssVar(name, fallback) {
   return value || fallback;
 }
 
-/** Multi-series line chart on a canvas. Nulls break the line rather than
- *  being drawn as zero, which matters for RRD buckets that have no data. */
+/** Tick label for a time axis: clock time within a couple of days, weekday
+ *  and date beyond that. */
+function fmtTick(epoch, span) {
+  if (!isNum(epoch)) return '';
+  const date = new Date(epoch * 1000);
+  if (span > 2 * 86400) {
+    return date.toLocaleDateString([], { weekday: 'short', day: 'numeric' });
+  }
+  return date.toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit',
+    hour12: !(state.config ? state.config.ui.clock_24h : true),
+  });
+}
+
+/** Line chart on a canvas, positioned by time rather than by sample index.
+ *
+ *  Placing points by timestamp is what lets charts from different sources
+ *  agree: `range` pins the right edge to now and the left edge `range`
+ *  seconds before it, so a chart fed one-minute RRD buckets and one fed
+ *  two-second samples cover exactly the same window. Each series may carry
+ *  its own `times`. Nulls break the line rather than being drawn as zero. */
 function drawChart(canvas, options) {
   const series = (options.series || []).filter((s) => s && s.values && s.values.length);
   const dpr = window.devicePixelRatio || 1;
@@ -486,130 +514,258 @@ function drawChart(canvas, options) {
   if (!width || !height) return;
   // Assigning width/height reallocates the backing store and is far more
   // expensive than the drawing itself, so only do it when the size changed.
-  // clearRect below handles wiping the previous frame.
   const backingW = Math.round(width * dpr);
   const backingH = Math.round(height * dpr);
   if (canvas.width !== backingW || canvas.height !== backingH) {
     canvas.width = backingW;
     canvas.height = backingH;
   }
-
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
   const line = cssVar('--line', '#2a323e');
   const muted = cssVar('--muted', '#8b98a9');
-  const pad = { l: options.axis === false ? 4 : 32, r: 6, t: 6, b: options.times ? 15 : 6 };
+  const panel = cssVar('--panel', '#161b22');
+  const font = options.font || 10;
+  const markers = (options.markers || []).filter((m) => isNum(m.value));
+  const labelled = series.filter((s) => s.label);
+  const showLegend = options.legend !== false && labelled.length > 1;
+  const pad = {
+    l: options.axis === false ? 4 : (options.padLeft || Math.round(font * 3.4)),
+    r: markers.length ? Math.round(font * 4.6) : 8,
+    t: showLegend ? font + 11 : 7,
+    b: font + 8,
+  };
   const plotW = width - pad.l - pad.r;
   const plotH = height - pad.t - pad.b;
   if (plotW <= 0 || plotH <= 0) return;
+
+  const timesOf = (item) => item.times || options.times || [];
+  let tMin;
+  let tMax;
+  if (options.range) {
+    tMax = options.until || Date.now() / 1000;
+    tMin = tMax - options.range;
+  } else {
+    tMin = Infinity;
+    tMax = -Infinity;
+    for (const item of series) {
+      for (const t of timesOf(item)) {
+        if (isNum(t)) { tMin = Math.min(tMin, t); tMax = Math.max(tMax, t); }
+      }
+    }
+    if (!isFinite(tMin)) { tMax = Date.now() / 1000; tMin = tMax - 3600; }
+    if (tMax - tMin < 1) tMin = tMax - 1;
+  }
+  const tSpan = tMax - tMin;
+  // A point just left of the window is kept so the line enters from the edge
+  // instead of starting a few pixels in; the clip below hides the overhang.
+  const visible = (t) => isNum(t) && t >= tMin - tSpan * 0.05 && t <= tMax + 5;
 
   let max = options.max;
   if (max === undefined) {
     max = 0;
     for (const item of series) {
-      for (const value of item.values) if (isNum(value) && value > max) max = value;
+      const times = timesOf(item);
+      item.values.forEach((v, i) => { if (isNum(v) && visible(times[i]) && v > max) max = v; });
     }
+    for (const marker of markers) max = Math.max(max, marker.value);
     max = max > 0 ? max * 1.15 : 1;
   }
   const min = options.min || 0;
   const span = Math.max(max - min, 1e-9);
+  const xAt = (t) => pad.l + ((t - tMin) / tSpan) * plotW;
+  const yAt = (v) => pad.t + plotH - clamp((v - min) / span, 0, 1) * plotH;
 
-  ctx.font = '10px ui-monospace, Menlo, monospace';
-  ctx.strokeStyle = line;
-  ctx.fillStyle = muted;
+  // Grid: horizontal value lines, faint vertical time lines.
+  ctx.font = `${font}px ui-monospace, Menlo, monospace`;
   ctx.lineWidth = 1;
   const ticks = options.ticks || 4;
   for (let i = 0; i <= ticks; i++) {
     const value = min + (span * i) / ticks;
-    const y = pad.t + plotH - ((value - min) / span) * plotH;
+    const y = Math.round(yAt(value)) + 0.5;
+    ctx.strokeStyle = line;
     ctx.beginPath();
-    ctx.moveTo(pad.l, Math.round(y) + 0.5);
-    ctx.lineTo(width - pad.r, Math.round(y) + 0.5);
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(pad.l + plotW, y);
     ctx.stroke();
     if (options.axis !== false) {
+      ctx.fillStyle = muted;
       ctx.textAlign = 'right';
       ctx.fillText(options.format ? options.format(value) : String(Math.round(value)),
-                   pad.l - 5, y + 3);
+                   pad.l - 5, y + font * 0.35);
     }
   }
+  const xTicks = options.xTicks || (plotW > 520 ? 6 : plotW > 300 ? 4 : 3);
+  for (let i = 0; i <= xTicks; i++) {
+    const t = tMin + (tSpan * i) / xTicks;
+    const x = Math.round(xAt(t)) + 0.5;
+    if (i > 0 && i < xTicks) {
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = line;
+      ctx.beginPath();
+      ctx.moveTo(x, pad.t);
+      ctx.lineTo(x, pad.t + plotH);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.fillStyle = muted;
+    ctx.textAlign = i === 0 ? 'left' : i === xTicks ? 'right' : 'center';
+    ctx.fillText(fmtTick(t, tSpan), x, height - 3);
+  }
 
-  if (!series.length || series.every((s) => s.values.every((v) => !isNum(v)))) {
+  const hasData = series.some((item) => {
+    const times = timesOf(item);
+    return item.values.some((v, i) => isNum(v) && visible(times[i]));
+  });
+  if (!hasData) {
     ctx.textAlign = 'center';
     ctx.fillStyle = muted;
-    ctx.fillText(options.empty || 'no data yet', width / 2, height / 2);
+    ctx.fillText(options.empty || 'no data yet', pad.l + plotW / 2, pad.t + plotH / 2);
     return;
-  }
-
-  const count = Math.max(...series.map((s) => s.values.length));
-  const xAt = (i) => pad.l + (count <= 1 ? plotW / 2 : (i / (count - 1)) * plotW);
-  const yAt = (v) => pad.t + plotH - (clamp((v - min) / span, 0, 1)) * plotH;
-
-  if (options.times && options.times.length) {
-    ctx.textAlign = 'center';
-    ctx.fillStyle = muted;
-    for (let i = 0; i <= 3; i++) {
-      const index = Math.round((count - 1) * (i / 3));
-      const stamp = options.times[index];
-      if (!isNum(stamp)) continue;
-      ctx.fillText(fmtTimeShort(stamp), clamp(xAt(index), pad.l + 16, width - pad.r - 16),
-                   height - 4);
-    }
   }
 
   const fill = options.fill !== undefined ? options.fill
     : (state.config ? state.config.ui.chart_fill : true);
+  const fillable = series.filter((s) => s.fill !== false).length;
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pad.l, pad.t - 3, plotW, plotH + 6);
+  ctx.clip();
   for (const item of series) {
-    const points = [];
-    item.values.forEach((value, i) => points.push(isNum(value) ? [xAt(i), yAt(value)] : null));
+    const times = timesOf(item);
+    const points = item.values.map((v, i) => (isNum(v) && visible(times[i])
+      ? [xAt(times[i]), yAt(v)] : null));
 
-    if (fill && series.length <= 2 && item.fill !== false) {
-      ctx.beginPath();
-      let open = false;
-      points.forEach((point) => {
-        if (!point) { open = false; return; }
-        if (!open) { ctx.moveTo(point[0], pad.t + plotH); ctx.lineTo(point[0], point[1]); open = true; }
-        else ctx.lineTo(point[0], point[1]);
-      });
-      const lastPoint = points.filter(Boolean).pop();
-      if (lastPoint) {
-        ctx.lineTo(lastPoint[0], pad.t + plotH);
-        ctx.closePath();
-        ctx.fillStyle = rgba(item.color, 0.16);
-        ctx.fill();
-      }
+    if (fill && item.fill !== false && fillable <= 2) {
+      const gradient = ctx.createLinearGradient(0, pad.t, 0, pad.t + plotH);
+      gradient.addColorStop(0, rgba(item.color, 0.3));
+      gradient.addColorStop(1, rgba(item.color, 0.02));
+      ctx.fillStyle = gradient;
+      let run = [];
+      const flush = () => {
+        if (run.length > 1) {
+          ctx.beginPath();
+          ctx.moveTo(run[0][0], pad.t + plotH);
+          for (const point of run) ctx.lineTo(point[0], point[1]);
+          ctx.lineTo(run[run.length - 1][0], pad.t + plotH);
+          ctx.closePath();
+          ctx.fill();
+        }
+        run = [];
+      };
+      for (const point of points) { if (point) run.push(point); else flush(); }
+      flush();
     }
 
     ctx.strokeStyle = item.color;
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = item.width || 1.8;
     ctx.lineJoin = 'round';
     ctx.setLineDash(item.dashed ? [4, 3] : []);
     ctx.beginPath();
     let started = false;
-    points.forEach((point) => {
-      if (!point) { started = false; return; }
+    for (const point of points) {
+      if (!point) { started = false; continue; }
       if (started) ctx.lineTo(point[0], point[1]);
       else { ctx.moveTo(point[0], point[1]); started = true; }
-    });
+    }
     ctx.stroke();
     ctx.setLineDash([]);
-  }
 
-  if (options.legend !== false && series.length > 1) {
-    let x = pad.l + 2;
-    ctx.textAlign = 'left';
-    ctx.font = '10px system-ui, sans-serif';
-    for (const item of series) {
-      if (!item.label) continue;
+    // The newest reading gets a dot, so the eye lands on "now".
+    const last = points.filter(Boolean).pop();
+    if (last && !item.dashed) {
+      ctx.beginPath();
+      ctx.arc(last[0], last[1], 3, 0, Math.PI * 2);
       ctx.fillStyle = item.color;
-      ctx.fillRect(x, pad.t - 1, 8, 3);
-      ctx.fillStyle = muted;
-      ctx.fillText(item.label, x + 11, pad.t + 3);
-      x += 11 + ctx.measureText(item.label).width + 12;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = panel;
+      ctx.stroke();
     }
   }
+  ctx.restore();
+
+  for (const marker of markers) {
+    const y = Math.round(yAt(marker.value)) + 0.5;
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = marker.color || muted;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(pad.l + plotW, y);
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = marker.color || muted;
+    ctx.textAlign = 'left';
+    ctx.fillText(marker.label || '', pad.l + plotW + 4, y + font * 0.35);
+  }
+
+  if (showLegend) {
+    let x = pad.l;
+    ctx.textAlign = 'left';
+    ctx.font = `${font}px system-ui, sans-serif`;
+    for (const item of labelled) {
+      ctx.fillStyle = item.color;
+      if (item.dashed) {
+        ctx.fillRect(x, font / 2 + 1, 4, 2.5);
+        ctx.fillRect(x + 6, font / 2 + 1, 4, 2.5);
+      } else {
+        ctx.fillRect(x, font / 2 + 1, 10, 2.5);
+      }
+      ctx.fillStyle = muted;
+      ctx.fillText(item.label, x + 14, font + 1);
+      x += 14 + ctx.measureText(item.label).width + 14;
+    }
+  }
+}
+
+/** Append the live reading at "now", so a line fed one-minute buckets ends at
+ *  the value its dial shows instead of up to a minute behind it. */
+function liveTail(times, values, current) {
+  const t = Array.isArray(times) ? times.slice() : [];
+  const v = Array.isArray(values) ? values.slice() : [];
+  if (isNum(current)) { t.push(Date.now() / 1000); v.push(current); }
+  return { times: t, values: v };
+}
+
+/** Average, peak and low of a series, over points at or after `since`. */
+function seriesStats(times, values, since) {
+  let sum = 0;
+  let count = 0;
+  let max = null;
+  let maxAt = null;
+  let min = null;
+  (values || []).forEach((value, i) => {
+    const t = times ? times[i] : null;
+    if (!isNum(value) || (since && isNum(t) && t < since)) return;
+    sum += value;
+    count += 1;
+    if (max === null || value > max) { max = value; maxAt = t; }
+    if (min === null || value < min) min = value;
+  });
+  return { avg: count ? sum / count : null, max, maxAt, min, count };
+}
+
+/** Integrate a rate over time: each bucket's rate times its width. Turns a
+ *  bytes-per-second series into bytes moved over the period. */
+function seriesTotal(times, values, since) {
+  let total = 0;
+  let seen = false;
+  (values || []).forEach((value, i) => {
+    const t = times[i];
+    if (!isNum(value) || !isNum(t) || (since && t < since)) return;
+    const next = times[i + 1];
+    const prev = times[i - 1];
+    const width = isNum(next) ? next - t : isNum(prev) ? t - prev : 60;
+    total += value * width;
+    seen = true;
+  });
+  return seen ? total : null;
 }
 
 function seriesPalette() {
@@ -626,6 +782,32 @@ function roleColor(index) {
 
 function chartSeries(values, color, label, extra = {}) {
   return Object.assign({ values: values || [], color, label }, extra);
+}
+
+/** One row of a ranked list: name, figure, a bar, and a quiet second line. */
+function rankRow(name, figure, percent, colour, sub) {
+  const fill = el('i');
+  fill.style.width = `${clamp(isNum(percent) ? percent : 0, 0, 100)}%`;
+  fill.style.background = colour;
+  const row = el('div', { class: 'rank-row' },
+    el('div', { class: 'rank-name', text: name }),
+    el('div', { class: 'rank-val', text: figure }),
+    el('div', { class: 'rank-bar' }, fill),
+    sub ? el('div', { class: 'rank-sub', text: sub }) : null);
+  row.title = sub ? `${name} · ${sub}` : name;
+  return row;
+}
+
+function fmtDuration(seconds) {
+  if (!isNum(seconds) || seconds <= 0) return '—';
+  if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} min`;
+  const hours = seconds / 3600;
+  return `${hours < 10 ? hours.toFixed(1).replace(/\.0$/, '') : Math.round(hours)} h`;
+}
+
+function fmtLink(mbit) {
+  if (!isNum(mbit)) return '—';
+  return mbit >= 1000 ? `${+(mbit / 1000).toFixed(1)} Gb/s` : `${mbit} Mb/s`;
 }
 
 /* -------------------------------------------------------------------- nav */
@@ -652,9 +834,15 @@ function showPage(id) {
     const button = document.querySelector(`#nav button[data-page="${page.id}"]`);
     if (button) button.setAttribute('aria-current', String(page.id === id));
   }
+  // A detail view belongs to its page. Leaving the page closes it, so coming
+  // back always lands on the overview of that page rather than a stale zoom.
   if (id !== 'vms') closeGuest();
+  if (id !== 'performance') state.usageDetail = null;
+  if (id !== 'temps') state.fanDetail = null;
+  closeRangeMenu();
   render();
   if (id === 'settings') renderSettings();
+  if (id === 'temps') pollFanHistory(true);
 }
 
 /* --------------------------------------------------------------- overview */
@@ -776,12 +964,25 @@ function renderOverview() {
 
 /* ------------------------------------------------------------ performance */
 
+const USAGE_RANGE = 3600;        // every Usage chart covers the same last hour
+const RRD_RANGE = { hour: 3600, day: 86400, week: 604800 };
+const PERIOD_LABEL = { hour: 'last hour', day: 'last 24 hours', week: 'last 7 days' };
+
 function renderPerformance() {
+  const open = Boolean(state.usageDetail);
+  document.getElementById('perf-grid').hidden = open;
+  document.getElementById('perf-detail').hidden = !open;
+  if (open) { renderUsageDetail(); return; }
+
   const system = state.snapshot.system || {};
-  const live = state.live || {};
-  const liveSystem = live.system || {};
   const rrd = state.rrd || {};
   const accent = state.config.ui.accent;
+
+  // All three charts read the same source (Proxmox's one-minute RRD) over the
+  // same last hour, so their time axes line up exactly. Previously CPU and
+  // memory drew a five-minute live buffer beside an hour of network history.
+  const small = { min: 0, max: 100, range: USAGE_RANGE, legend: false,
+                  format: (v) => `${Math.round(v)}`, empty: 'waiting for Proxmox history' };
 
   const cpu = isNum(system.cpu) ? system.cpu : null;
   const cpuDial = dialFor('perf', 'cpu', 'CPU');
@@ -796,11 +997,10 @@ function renderPerformance() {
     ['Load 1 / 5 / 15', load.length ? load.map((v) => v.toFixed(2)).join(' / ') : '—'],
     ['I/O wait', lastOf(rrd.iowait) !== null ? `${lastOf(rrd.iowait).toFixed(1)}%` : '—'],
   ]);
-  drawChart(document.getElementById('perf-cpu-chart'), {
-    series: [chartSeries(liveSystem.cpu, accent, 'cpu %')],
-    min: 0, max: 100, times: liveSystem.time, legend: false,
-    format: (v) => `${Math.round(v)}`,
-  });
+  const cpuLine = liveTail(rrd.time, rrd.cpu, cpu);
+  drawChart(document.getElementById('perf-cpu-chart'), Object.assign({}, small, {
+    series: [chartSeries(cpuLine.values, accent, 'cpu %', { times: cpuLine.times })],
+  }));
 
   const memory = system.memory || {};
   const swap = system.swap || {};
@@ -814,11 +1014,10 @@ function renderPerformance() {
     ['Free', memory.total ? fmtBytes(memory.total - memory.used) : '—'],
     ['Swap', swap.total ? `${fmtBytes(swap.used)} / ${fmtBytes(swap.total)}` : 'none'],
   ]);
-  drawChart(document.getElementById('perf-mem-chart'), {
-    series: [chartSeries(liveSystem.memory, accent, 'mem %')],
-    min: 0, max: 100, times: liveSystem.time, legend: false,
-    format: (v) => `${Math.round(v)}`,
-  });
+  const memLine = liveTail(rrd.time, rrd.memory, memory.percent);
+  drawChart(document.getElementById('perf-mem-chart'), Object.assign({}, small, {
+    series: [chartSeries(memLine.values, accent, 'mem %', { times: memLine.times })],
+  }));
 
   const net = system.net || {};
   const total = (isNum(net.in) ? net.in : 0) + (isNum(net.out) ? net.out : 0);
@@ -831,8 +1030,10 @@ function renderPerformance() {
     color: usageColor(known ? (total / linkBytes) * 100 : 0), blank: !known,
   });
   mountDial('perf-net-dial', netDial);
+  document.getElementById('perf-net-tag').textContent = '1 min avg';
 
-  const peakIn = maxOf(rrd.netin), peakOut = maxOf(rrd.netout);
+  const peakIn = seriesStats(rrd.time, rrd.netin, Date.now() / 1000 - USAGE_RANGE).max;
+  const peakOut = seriesStats(rrd.time, rrd.netout, Date.now() / 1000 - USAGE_RANGE).max;
   setKv('perf-net-kv', [
     ['Receive', fmtRate(net.in)],
     ['Transmit', fmtRate(net.out)],
@@ -841,12 +1042,211 @@ function renderPerformance() {
   ]);
   drawChart(document.getElementById('perf-net-chart'), {
     series: [
-      chartSeries(rrd.netin, roleColor(1), 'in'),
-      chartSeries(rrd.netout, roleColor(3), 'out'),
+      chartSeries(rrd.netin, roleColor(1), 'in', { times: rrd.time }),
+      chartSeries(rrd.netout, roleColor(3), 'out', { times: rrd.time }),
     ],
-    times: rrd.time, format: (v) => fmtBytes(v, 0),
+    range: USAGE_RANGE, format: (v) => fmtBytes(v, 0), padLeft: 42,
     empty: 'waiting for Proxmox history',
   });
+}
+
+/* ---------------------------------------------------- usage detail views */
+
+function detailRrd() {
+  if (state.detailTimeframe === 'hour') return state.rrd && state.rrd.time ? state.rrd : null;
+  const cached = state.detailRrd;
+  return cached && cached.timeframe === state.detailTimeframe ? cached.data : null;
+}
+
+async function fetchDetailRrd(force = false) {
+  const timeframe = state.detailTimeframe;
+  if (!state.usageDetail || timeframe === 'hour') return;
+  const cached = state.detailRrd;
+  if (!force && cached && cached.timeframe === timeframe && Date.now() - cached.at < 60000) return;
+  try {
+    const data = await api(`/api/rrd?timeframe=${timeframe}`);
+    state.detailRrd = { timeframe, data, at: Date.now() };
+    state.detailError = null;
+  } catch (error) {
+    state.detailError = error.message;
+  }
+  if (state.page === 'performance') renderPerformance();
+}
+
+function openUsageDetail(kind) {
+  state.usageDetail = kind;
+  state.rotateAt = Date.now();
+  fetchDetailRrd(true);
+  renderPerformance();
+}
+
+function closeUsageDetail() {
+  state.usageDetail = null;
+  renderPerformance();
+}
+
+function renderUsageDetail() {
+  const kind = state.usageDetail;
+  const timeframe = state.detailTimeframe;
+  const range = RRD_RANGE[timeframe];
+  const since = Date.now() / 1000 - range;
+  const rrd = detailRrd();
+  const system = state.snapshot.system || {};
+  const guests = (state.snapshot.guests || []).filter((g) => g.status === 'running');
+  const accent = state.config.ui.accent;
+  const muted = cssVar('--muted', '#8b98a9');
+  const period = PERIOD_LABEL[timeframe];
+  const isHour = timeframe === 'hour';
+
+  document.querySelectorAll('#pd-timeframe button').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.timeframe === timeframe));
+  });
+  const empty = state.detailError && !rrd ? state.detailError : 'loading history…';
+  const chartBase = { range, font: 12, empty };
+  const rank = document.getElementById('pd-rank');
+  const setText = (id, text) => { document.getElementById(id).textContent = text; };
+
+  if (kind === 'cpu') {
+    const cpu = isNum(system.cpu) ? system.cpu : null;
+    setText('pd-title', 'Processor');
+    setText('pd-tag', system.cpus ? `${system.cpus} threads` : '');
+    const dial = dialFor('pd', 'cpu', 'CPU');
+    dial.update({ percent: cpu, value: cpu, unit: '%', decimals: 1,
+                  color: usageColor(cpu), blank: cpu === null });
+    mountDial('pd-dial', dial);
+
+    const stats = seriesStats(rrd && rrd.time, rrd && rrd.cpu, since);
+    const io = seriesStats(rrd && rrd.time, rrd && rrd.iowait, since);
+    const load = system.load || [];
+    setKv('pd-kv', [
+      ['Model', shortLabel(system.cpu_model || '—', 24)],
+      ['Clock', isNum(system.cpu_mhz) ? `${Math.round(system.cpu_mhz)} MHz` : '—'],
+      ['Load 1/5/15', load.length ? load.map((v) => v.toFixed(2)).join(' / ') : '—'],
+      ['Per thread', load.length && system.cpus
+        ? `${Math.round((load[0] / system.cpus) * 100)}% busy` : '—'],
+      ['I/O wait', isNum(lastOf(rrd && rrd.iowait)) ? `${lastOf(rrd.iowait).toFixed(1)}%` : '—'],
+      ['Average', isNum(stats.avg) ? `${stats.avg.toFixed(1)}%` : '—'],
+      ['Peak', isNum(stats.max) ? `${stats.max.toFixed(1)}% · ${fmtTick(stats.maxAt, range)}` : '—'],
+    ]);
+
+    setText('pd-chart-title', 'CPU & I/O wait');
+    setText('pd-chart-note', `${period}${isNum(io.max) ? ` · I/O wait peak ${io.max.toFixed(1)}%` : ''}`);
+    const line = isHour ? liveTail(rrd && rrd.time, rrd && rrd.cpu, cpu)
+                        : { times: rrd && rrd.time, values: rrd && rrd.cpu };
+    drawChart(document.getElementById('pd-chart'), Object.assign({}, chartBase, {
+      min: 0, max: 100, format: (v) => `${Math.round(v)}%`,
+      series: rrd ? [
+        chartSeries(line.values, accent, 'cpu', { times: line.times }),
+        chartSeries(rrd.iowait, roleColor(3), 'i/o wait', { times: rrd.time, fill: false, dashed: true }),
+      ] : [],
+      markers: isNum(stats.avg) ? [{ value: stats.avg, label: `avg ${Math.round(stats.avg)}%`, color: muted }] : [],
+    }));
+
+    setText('pd-rank-title', 'Busiest guests');
+    setText('pd-rank-note', 'of their vCPUs');
+    const busiest = guests.slice().sort((a, b) => (b.cpu || 0) - (a.cpu || 0)).slice(0, 5);
+    rank.replaceChildren(...(busiest.length ? busiest.map((g) => rankRow(
+      g.name, `${(g.cpu || 0).toFixed(1)}%`, g.cpu, usageColor(g.cpu),
+      `${g.type} ${g.id} · ${g.cpus || '?'} vCPU`))
+      : [el('div', { class: 'empty', text: 'no running guests' })]));
+    return;
+  }
+
+  if (kind === 'mem') {
+    const memory = system.memory || {};
+    const swap = system.swap || {};
+    setText('pd-title', 'Memory');
+    setText('pd-tag', memory.total ? fmtBytes(memory.total) : '');
+    const dial = dialFor('pd', 'mem', 'MEMORY');
+    dial.update({ percent: memory.percent, value: memory.percent, unit: '%', decimals: 1,
+                  color: usageColor(memory.percent), blank: !isNum(memory.percent) });
+    mountDial('pd-dial', dial);
+
+    const stats = seriesStats(rrd && rrd.time, rrd && rrd.memory, since);
+    const allocated = guests.reduce((sum, g) => sum + (g.maxmem || 0), 0);
+    setKv('pd-kv', [
+      ['Used', memory.total ? fmtBytes(memory.used) : '—'],
+      ['Free', memory.total ? fmtBytes(memory.total - memory.used) : '—'],
+      ['Guests given', allocated ? `${fmtBytes(allocated)}${memory.total
+        ? ` · ${Math.round((allocated / memory.total) * 100)}%` : ''}` : '—'],
+      ['Swap', swap.total ? `${fmtBytes(swap.used)} / ${fmtBytes(swap.total)}` : 'none'],
+      ['Swap used', swap.total ? `${(swap.percent || 0).toFixed(1)}%` : '—'],
+      ['Average', isNum(stats.avg) ? `${stats.avg.toFixed(1)}%` : '—'],
+      ['Peak', isNum(stats.max) ? `${stats.max.toFixed(1)}% · ${fmtTick(stats.maxAt, range)}` : '—'],
+    ]);
+
+    setText('pd-chart-title', 'Memory & swap');
+    setText('pd-chart-note', period);
+    const line = isHour ? liveTail(rrd && rrd.time, rrd && rrd.memory, memory.percent)
+                        : { times: rrd && rrd.time, values: rrd && rrd.memory };
+    drawChart(document.getElementById('pd-chart'), Object.assign({}, chartBase, {
+      min: 0, max: 100, format: (v) => `${Math.round(v)}%`,
+      series: rrd ? [
+        chartSeries(line.values, accent, 'memory', { times: line.times }),
+        chartSeries(rrd.swap, roleColor(4), 'swap', { times: rrd.time, fill: false, dashed: true }),
+      ] : [],
+      markers: isNum(stats.avg) ? [{ value: stats.avg, label: `avg ${Math.round(stats.avg)}%`, color: muted }] : [],
+    }));
+
+    setText('pd-rank-title', 'Largest guests');
+    setText('pd-rank-note', 'in use now');
+    const largest = guests.slice().sort((a, b) => (b.mem || 0) - (a.mem || 0)).slice(0, 5);
+    rank.replaceChildren(...(largest.length ? largest.map((g) => rankRow(
+      g.name, fmtBytes(g.mem), g.mem_percent, usageColor(g.mem_percent),
+      `${Math.round(g.mem_percent || 0)}% of ${fmtBytes(g.maxmem)} · ${g.type} ${g.id}`))
+      : [el('div', { class: 'empty', text: 'no running guests' })]));
+    return;
+  }
+
+  // network
+  const net = system.net || {};
+  const linkMbit = net.link_mbit || 1000;
+  const linkBytes = linkMbit * 1e6 / 8;
+  const current = (isNum(net.in) ? net.in : 0) + (isNum(net.out) ? net.out : 0);
+  const known = isNum(net.in) || isNum(net.out);
+  setText('pd-title', 'Network');
+  setText('pd-tag', `${fmtLink(linkMbit)} link`);
+  const dial = dialFor('pd', 'net', 'NETWORK');
+  dial.update({
+    percent: known ? (current / linkBytes) * 100 : null,
+    value: known ? (current * 8) / 1e6 : null, unit: ' Mb/s', decimals: 1,
+    color: usageColor(known ? (current / linkBytes) * 100 : 0), blank: !known,
+  });
+  mountDial('pd-dial', dial);
+
+  const inStats = seriesStats(rrd && rrd.time, rrd && rrd.netin, since);
+  const outStats = seriesStats(rrd && rrd.time, rrd && rrd.netout, since);
+  const received = rrd ? seriesTotal(rrd.time, rrd.netin, since) : null;
+  const sent = rrd ? seriesTotal(rrd.time, rrd.netout, since) : null;
+  const busiest = Math.max(inStats.max || 0, outStats.max || 0);
+  setKv('pd-kv', [
+    ['Receiving', fmtRate(net.in)],
+    ['Sending', fmtRate(net.out)],
+    ['Peak in', fmtRate(inStats.max)],
+    ['Peak out', fmtRate(outStats.max)],
+    ['Received', isNum(received) ? fmtBytes(received) : '—'],
+    ['Sent', isNum(sent) ? fmtBytes(sent) : '—'],
+    ['Link peak', busiest ? `${((busiest / linkBytes) * 100).toFixed(1)}%` : '—'],
+  ]);
+
+  setText('pd-chart-title', 'Throughput');
+  setText('pd-chart-note', `${period} · ${isHour ? '1-minute' : 'bucket'} averages`);
+  drawChart(document.getElementById('pd-chart'), Object.assign({}, chartBase, {
+    format: (v) => `${fmtBytes(v, 0)}/s`, padLeft: 70,
+    series: rrd ? [
+      chartSeries(rrd.netin, roleColor(1), 'in', { times: rrd.time }),
+      chartSeries(rrd.netout, roleColor(3), 'out', { times: rrd.time }),
+    ] : [],
+  }));
+
+  setText('pd-rank-title', 'Top talkers');
+  setText('pd-rank-note', 'live · 15 s');
+  const talkers = (state.snapshot.talkers || []).slice(0, 5);
+  const loudest = Math.max(1, ...talkers.map((t) => (t.in || 0) + (t.out || 0)));
+  rank.replaceChildren(...(talkers.length ? talkers.map((t) => rankRow(
+    t.name, fmtRate((t.in || 0) + (t.out || 0)), (((t.in || 0) + (t.out || 0)) / loudest) * 100,
+    roleColor(1), `↓ ${fmtRate(t.in)}   ↑ ${fmtRate(t.out)}`))
+    : [el('div', { class: 'empty', text: 'measuring… rates appear after 15 s' })]));
 }
 
 function mountDial(containerId, dial) {
@@ -879,31 +1279,144 @@ const maxOf = (values) => {
 
 /* ------------------------------------------------------------------ temps */
 
+const TEMPS_RANGES = [[300, '5 min'], [900, '15 min'], [1800, '30 min'],
+                      [3600, '1 hour'], [18000, '5 hours'], [36000, '10 hours']];
+
+const FAN_REASONS = {
+  curve: ['following curve', ''], fixed: ['fixed duty', ''], off: ['off', ''],
+  stopped: ['stopped below threshold', ''], disabled: ['not controlled', ''],
+  test: ['test override', 'warn'], starting: ['starting', ''],
+  'no-sensors': ['no sensor → failsafe', 'warn'],
+  'sensors-unavailable': ['sensor lost → failsafe', 'bad'],
+  emergency: ['emergency · over temp', 'bad'],
+};
+const MIX_LABEL = { max: 'hottest', avg: 'average', min: 'coolest' };
+
+const tempsRange = () => (state.config && state.config.ui.temps_range) || 3600;
+const rangeLabel = (seconds) =>
+  (TEMPS_RANGES.find((r) => r[0] === seconds) || [0, fmtDuration(seconds)])[1];
+
+/** The fan app's own recorded history, proxied by the daemon. It carries
+ *  every sensor plus each fan's rpm and duty, and survives restarts, so a
+ *  ten-hour chart needs nothing kept on the Pi. Longer windows change slowly
+ *  and are refetched less often. */
+async function pollFanHistory(force = false) {
+  if (!state.config || state.page !== 'temps') return;
+  const range = tempsRange();
+  const every = range <= 1800 ? 5000 : range <= 3600 ? 15000 : 60000;
+  const cached = state.fanHistory;
+  if (!force && cached && cached.range === range && Date.now() - state.fanHistoryAt < every) return;
+  try {
+    const data = await api(`/api/fan-history?range=${range}&points=${range <= 900 ? 300 : 450}`);
+    state.fanHistory = data;
+    state.fanHistoryAt = Date.now();
+    state.fanHistoryError = null;
+  } catch (error) {
+    state.fanHistoryError = error.message;
+  }
+  if (state.page === 'temps') renderTemps();
+}
+
+function syncRangeButtons() {
+  const label = rangeLabel(tempsRange());
+  for (const id of ['temps-range', 'fd-range']) {
+    const button = document.getElementById(id);
+    if (button.textContent !== label) button.textContent = label;
+  }
+}
+
+function openRangeMenu(anchor) {
+  const menu = document.getElementById('range-menu');
+  if (!menu.hidden && state.rangeAnchor === anchor) { closeRangeMenu(); return; }
+  const current = tempsRange();
+  menu.replaceChildren(...TEMPS_RANGES.map(([seconds, label]) => {
+    const option = el('button', {
+      type: 'button', role: 'menuitemradio', text: label,
+      onclick: (event) => { event.stopPropagation(); closeRangeMenu(); setTempsRange(seconds); },
+    });
+    option.setAttribute('aria-checked', String(seconds === current));
+    return option;
+  }));
+  menu.hidden = false;
+  const box = anchor.getBoundingClientRect();
+  menu.style.left = `${clamp(box.left, 8, window.innerWidth - menu.offsetWidth - 8)}px`;
+  const below = box.bottom + 6;
+  menu.style.top = below + menu.offsetHeight > window.innerHeight - 4
+    ? `${Math.max(4, box.top - menu.offsetHeight - 6)}px` : `${below}px`;
+  if (state.rangeAnchor) state.rangeAnchor.setAttribute('aria-expanded', 'false');
+  anchor.setAttribute('aria-expanded', 'true');
+  state.rangeAnchor = anchor;
+}
+
+function closeRangeMenu() {
+  const menu = document.getElementById('range-menu');
+  if (menu) menu.hidden = true;
+  if (state.rangeAnchor) state.rangeAnchor.setAttribute('aria-expanded', 'false');
+  state.rangeAnchor = null;
+}
+
+function setTempsRange(seconds) {
+  state.config.ui.temps_range = seconds;
+  state.fanHistory = null;
+  syncRangeButtons();
+  saveConfig({ ui: { temps_range: seconds } }).catch(() => {});
+  pollFanHistory(true);
+  renderTemps();
+}
+
+/** The history payload, when it matches the range currently on show. */
+function fanHistory() {
+  const history = state.fanHistory;
+  return history && history.range === tempsRange() && history.time ? history : null;
+}
+
 function renderTemps() {
+  const open = state.fanDetail !== null && state.fanDetail !== undefined;
+  document.getElementById('temps-main').hidden = open;
+  document.getElementById('fan-detail').hidden = !open;
+  syncRangeButtons();
+  if (open) { renderFanDetail(); return; }
+
   const temps = state.snapshot.temps || {};
   layoutDials(document.getElementById('temps-dials'), tempDials('temps'));
 
-  const live = (state.live || {}).temps || {};
+  const range = tempsRange();
+  const history = fanHistory();
   const sensors = temps.sensors || [];
   const palette = seriesPalette();
-  const series = sensors.map((sensor, index) => chartSeries(
-    live[sensor.id], palette[index % palette.length], shortLabel(sensor.label, 16)));
-
+  let series;
+  if (history) {
+    series = sensors.map((sensor, index) => chartSeries(
+      history.temps[sensor.id], palette[index % palette.length], shortLabel(sensor.label, 16),
+      { times: history.time }));
+  } else {
+    // Until the fan app's history arrives, draw the short live buffer.
+    const live = (state.live || {}).temps || {};
+    series = sensors.map((sensor, index) => chartSeries(
+      live[sensor.id], palette[index % palette.length], shortLabel(sensor.label, 16),
+      { times: live.time }));
+  }
   drawChart(document.getElementById('temps-chart'), {
-    series, times: live.time, min: state.config.ui.temp_min,
-    max: state.config.ui.temp_max, format: (v) => `${Math.round(v)}°`,
+    series, range, min: state.config.ui.temp_min, max: state.config.ui.temp_max,
+    format: (v) => `${Math.round(v)}°`, font: 11,
     fill: series.length <= 1 && state.config.ui.chart_fill,
     empty: temps.enabled ? 'waiting for readings' : 'fan app is disabled',
   });
-  document.getElementById('temps-range').textContent =
-    live.time && live.time.length > 1
-      ? `${Math.round((live.time[live.time.length - 1] - live.time[0]) / 60)} min` : 'live';
+
+  // Say so when the fan app has not kept as much history as was asked for,
+  // rather than leaving an unexplained gap at the left of the chart.
+  let note = '';
+  if (state.fanHistoryError && !history) note = 'history unavailable · showing live';
+  else if (history && isNum(history.oldest)) {
+    const kept = Date.now() / 1000 - history.oldest;
+    if (kept < range * 0.9) note = `fan app has ${fmtDuration(kept)} of history`;
+  }
+  document.getElementById('temps-range-note').textContent = note;
 
   const fans = temps.fans || [];
   const container = document.getElementById('temps-fans');
   document.getElementById('temps-fan-tag').textContent =
     temps.connected ? `${fans.filter((f) => f.connected).length} connected` : 'no device';
-
   if (!fans.length) {
     container.replaceChildren(el('div', { class: 'empty',
       text: temps.enabled ? 'fan controller unreachable' : 'fan app disabled' }));
@@ -914,12 +1427,15 @@ function renderTemps() {
     const bar = el('i');
     bar.style.width = `${clamp(duty, 0, 100)}%`;
     bar.style.background = usageColor(duty);
-    const node = el('div', { class: `fan${fan.connected ? '' : ' off'}` },
+    const node = el('div', {
+      class: `fan${fan.connected ? '' : ' off'}`, role: 'button', tabindex: '0',
+      onclick: () => openFan(fan.index),
+    },
       el('div', { class: 'fan-name', text: fan.name }),
       el('div', { class: 'fan-value' }),
       el('div', { class: 'fan-bar' }, bar));
     const value = node.querySelector('.fan-value');
-    if (fan.connected && isNum(fan.rpm)) {
+    if (fan.connected && isNum(fan.rpm) && (fan.rpm > 0 || duty === 0)) {
       value.append(document.createTextNode(String(fan.rpm)),
                    el('small', { text: ' rpm  ' }),
                    document.createTextNode(duty.toFixed(0)),
@@ -929,9 +1445,264 @@ function renderTemps() {
     } else {
       value.append(el('small', { text: 'not connected' }));
     }
-    node.title = `${fan.name} · ${fan.reason || ''}`;
+    node.title = `${fan.name} · ${fan.reason || ''} · tap for detail`;
     return node;
   }));
+}
+
+/* ------------------------------------------------------------ fan detail */
+
+function openFan(index) {
+  state.fanDetail = index;
+  state.rotateAt = Date.now();
+  pollFanHistory(true);
+  renderTemps();
+}
+
+function closeFan() {
+  state.fanDetail = null;
+  renderTemps();
+}
+
+/** A fan's control temperature over time, rebuilt from the sensors it
+ *  follows with its own mix rule, since the fan app records sensors rather
+ *  than each fan's mixed input. */
+function fanControlSeries(fan, history) {
+  const ids = (fan.sensors || []).filter((id) => history.temps && history.temps[id]);
+  if (!ids.length) return null;
+  return history.time.map((_, i) => {
+    const values = ids.map((id) => history.temps[id][i]).filter(isNum);
+    if (!values.length) return null;
+    if (fan.mix === 'avg') return values.reduce((a, b) => a + b, 0) / values.length;
+    if (fan.mix === 'min') return Math.min(...values);
+    return Math.max(...values);
+  });
+}
+
+function renderFanDetail() {
+  const temps = state.snapshot.temps || {};
+  const fan = (temps.fans || []).find((f) => f.index === state.fanDetail);
+  if (!fan) {                                   // the channel went away
+    state.fanDetail = null;
+    document.getElementById('temps-main').hidden = false;
+    document.getElementById('fan-detail').hidden = true;
+    return;
+  }
+  const ui = state.config.ui;
+  const range = tempsRange();
+  const history = fanHistory();
+  const key = String(fan.index);
+
+  document.getElementById('fd-title').textContent = fan.name;
+  const typeTag = document.getElementById('fd-type');
+  typeTag.textContent = fan.connected ? (fan.type || 'connected') : 'not connected';
+  const [reasonText, reasonClass] = FAN_REASONS[fan.reason] || [fan.reason || '—', ''];
+  const reasonTag = document.getElementById('fd-reason');
+  reasonTag.textContent = reasonText;
+  reasonTag.className = `tag ${reasonClass}`;
+
+  const duty = isNum(fan.duty) ? fan.duty : null;
+  const control = isNum(fan.control_temp) ? fan.control_temp : null;
+  const dutyDial = dialFor('fd', `duty${fan.index}`, 'DUTY');
+  dutyDial.update({ percent: duty, value: duty, unit: '%', decimals: 0,
+                    color: usageColor(duty), blank: duty === null });
+  const tempDial = dialFor('fd', `temp${fan.index}`, 'CONTROL TEMP');
+  tempDial.update({
+    percent: control === null ? null
+      : ((control - ui.temp_min) / Math.max(ui.temp_max - ui.temp_min, 1)) * 100,
+    value: control, unit: '°', decimals: 1, color: tempColor(control), blank: control === null,
+  });
+  layoutDials(document.getElementById('fd-dials'), [dutyDial, tempDial]);
+
+  const rpmValues = history ? history.rpm[key] : null;
+  const dutyValues = history ? history.duty[key] : null;
+  const rpmStats = seriesStats(history && history.time, rpmValues);
+  const dutyStats = seriesStats(history && history.time, dutyValues);
+  // A 2-wire fan has no tachometer wire, so the controller reports 0 rpm while
+  // it is plainly running. Only a channel that has ever reported a speed is
+  // treated as having one; otherwise a flat zero line would claim the fan is
+  // stalled when it simply cannot say.
+  const everSpun = (isNum(fan.rpm) && fan.rpm > 0) || (rpmStats.count > 0 && rpmStats.max > 0);
+  const speedText = !fan.connected ? '—'
+    : everSpun ? `${isNum(fan.rpm) ? fan.rpm : 0} rpm`
+    : (isNum(duty) && duty > 0 ? 'no speed signal' : 'stopped');
+  const labels = (fan.sensor_labels || []).map((l) => shortLabel(l, 16));
+  setKv('fd-kv', [
+    ['Speed', speedText],
+    ['Mode', fan.mode === 'curve' ? 'curve' : fan.mode === 'fixed'
+      ? `fixed ${fan.fixed_duty}%` : (fan.mode || '—')],
+    ['Follows', labels.length > 1 ? `${MIX_LABEL[fan.mix] || fan.mix} of ${labels.length}`
+      : (labels[0] || 'nothing')],
+    ['Limits', isNum(fan.min_duty) ? `${fan.min_duty}–${fan.max_duty}% duty` : '—'],
+    ['Stops', isNum(fan.stop_below) ? `below ${fan.stop_below}°` : 'never'],
+    ['Avg duty', isNum(dutyStats.avg) ? `${Math.round(dutyStats.avg)}% · ${rangeLabel(range)}` : '—'],
+    ['Avg speed', everSpun && isNum(rpmStats.avg) ? `${Math.round(rpmStats.avg)} rpm` : '—'],
+  ]);
+
+  drawFanCurve(document.getElementById('fd-curve'), fan, control, duty);
+
+  const controlSeries = history ? fanControlSeries(fan, history) : null;
+  const tempStats = seriesStats(history && history.time, controlSeries);
+  drawChart(document.getElementById('fd-chart-duty'), {
+    range, min: 0, max: 100, font: 11, format: (v) => `${Math.round(v)}`,
+    series: history ? [
+      chartSeries(dutyValues, ui.accent, 'duty %', { times: history.time }),
+      controlSeries ? chartSeries(controlSeries, roleColor(3), 'control temp °C',
+        { times: history.time, fill: false }) : null,
+    ].filter(Boolean) : [],
+    empty: state.fanHistoryError || 'loading history…',
+  });
+  document.getElementById('fd-duty-note').textContent = history
+    ? [isNum(dutyStats.max) ? `duty peak ${Math.round(dutyStats.max)}%` : '',
+       isNum(tempStats.max) ? `temp peak ${tempStats.max.toFixed(1)}°` : ''].filter(Boolean).join(' · ')
+    : '';
+
+  drawChart(document.getElementById('fd-chart-rpm'), {
+    range, min: 0, font: 11, format: (v) => `${Math.round(v)}`, padLeft: 44,
+    series: history && everSpun
+      ? [chartSeries(rpmValues, roleColor(1), 'rpm', { times: history.time })] : [],
+    empty: !fan.connected ? 'channel not connected'
+      : !everSpun ? 'no speed signal · 2-wire fans have no tachometer'
+      : (state.fanHistoryError || 'loading history…'),
+  });
+  document.getElementById('fd-rpm-note').textContent = everSpun && isNum(rpmStats.avg)
+    ? `avg ${Math.round(rpmStats.avg)} · peak ${Math.round(rpmStats.max)} rpm` : '';
+}
+
+/** The fan's curve with its operating point, the same picture the fan app's
+ *  editor draws: where on the curve the fan is right now, and why. */
+function drawFanCurve(canvas, fan, controlTemp, duty) {
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (!width || !height) return;
+  const backingW = Math.round(width * dpr);
+  const backingH = Math.round(height * dpr);
+  if (canvas.width !== backingW || canvas.height !== backingH) {
+    canvas.width = backingW;
+    canvas.height = backingH;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const line = cssVar('--line', '#2a323e');
+  const muted = cssVar('--muted', '#8b98a9');
+  const text = cssVar('--text', '#e6edf3');
+  const panel = cssVar('--panel', '#161b22');
+  const accent = state.config.ui.accent;
+  const font = 11;
+  const pad = { l: 34, r: 10, t: 8, b: font + 9 };
+  const plotW = width - pad.l - pad.r;
+  const plotH = height - pad.t - pad.b;
+  if (plotW <= 0 || plotH <= 0) return;
+
+  const curve = (fan.curve || []).filter((p) => isNum(p[0]) && isNum(p[1]));
+  const temps = curve.map((p) => p[0]).concat(isNum(controlTemp) ? [controlTemp] : []);
+  const t0 = Math.min(20, ...temps.map((t) => Math.floor((t - 5) / 10) * 10));
+  const t1 = Math.max(90, ...temps.map((t) => Math.ceil((t + 5) / 10) * 10));
+  const xAt = (t) => pad.l + ((clamp(t, t0, t1) - t0) / (t1 - t0)) * plotW;
+  const yAt = (d) => pad.t + plotH - (clamp(d, 0, 100) / 100) * plotH;
+
+  ctx.font = `${font}px ui-monospace, Menlo, monospace`;
+  ctx.lineWidth = 1;
+  for (let d = 0; d <= 100; d += 25) {
+    const y = Math.round(yAt(d)) + 0.5;
+    ctx.strokeStyle = line;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + plotW, y); ctx.stroke();
+    ctx.fillStyle = muted; ctx.textAlign = 'right';
+    ctx.fillText(`${d}`, pad.l - 5, y + 4);
+  }
+  const step = t1 - t0 > 60 ? 20 : 10;
+  for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) {
+    const x = Math.round(xAt(t)) + 0.5;
+    ctx.save(); ctx.globalAlpha = 0.45; ctx.strokeStyle = line;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + plotH); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = muted; ctx.textAlign = 'center';
+    ctx.fillText(`${t}°`, clamp(x, pad.l + 10, pad.l + plotW - 10), height - 4);
+  }
+
+  const note = document.getElementById('fd-curve-note');
+  // Shade the duty the limits forbid, so it is clear why the fan never goes
+  // below its floor even where the curve does.
+  if (isNum(fan.min_duty) && fan.min_duty > 0) {
+    ctx.fillStyle = rgba(accent, 0.06);
+    ctx.fillRect(pad.l, yAt(fan.min_duty), plotW, yAt(0) - yAt(fan.min_duty));
+  }
+
+  let path;
+  if (fan.mode === 'fixed' && isNum(fan.fixed_duty)) {
+    path = [[t0, fan.fixed_duty], [t1, fan.fixed_duty]];
+    note.textContent = `fixed at ${fan.fixed_duty}%`;
+  } else if (fan.mode === 'off') {
+    path = [[t0, 0], [t1, 0]];
+    note.textContent = 'channel is off';
+  } else if (curve.length) {
+    path = [[t0, curve[0][1]], ...curve, [t1, curve[curve.length - 1][1]]];
+    note.textContent = `${curve.length} points`;
+  } else {
+    path = [];
+    note.textContent = 'no curve';
+  }
+
+  if (path.length) {
+    const gradient = ctx.createLinearGradient(0, pad.t, 0, pad.t + plotH);
+    gradient.addColorStop(0, rgba(accent, 0.28));
+    gradient.addColorStop(1, rgba(accent, 0.02));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(xAt(path[0][0]), yAt(0));
+    for (const [t, d] of path) ctx.lineTo(xAt(t), yAt(d));
+    ctx.lineTo(xAt(path[path.length - 1][0]), yAt(0));
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    path.forEach(([t, d], i) => (i ? ctx.lineTo(xAt(t), yAt(d)) : ctx.moveTo(xAt(t), yAt(d))));
+    ctx.stroke();
+    if (fan.mode === 'curve') {
+      for (const [t, d] of curve) {
+        ctx.beginPath();
+        ctx.arc(xAt(t), yAt(d), 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = panel; ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = accent; ctx.stroke();
+      }
+    }
+  }
+
+  if (isNum(fan.stop_below) && fan.mode === 'curve') {
+    const x = xAt(fan.stop_below);
+    ctx.save(); ctx.setLineDash([3, 4]); ctx.strokeStyle = muted;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + plotH); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Where the fan is now: a vertical at its control temperature and a ring
+  // on the duty it is actually running at.
+  if (isNum(controlTemp) && isNum(duty)) {
+    const x = xAt(controlTemp);
+    const y = yAt(duty);
+    const colour = tempColor(controlTemp);
+    ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = colour; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + plotH); ctx.stroke();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.fillStyle = rgba(hexOk(colour) ? colour : accent, 0.25); ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = hexOk(colour) ? colour : accent; ctx.fill();
+    const label = `${controlTemp.toFixed(1)}° → ${Math.round(duty)}%`;
+    ctx.font = `600 ${font + 1}px ui-monospace, Menlo, monospace`;
+    const labelW = ctx.measureText(label).width;
+    const lx = x + 10 + labelW > pad.l + plotW ? x - 10 - labelW : x + 10;
+    const ly = clamp(y - 10, pad.t + font, pad.t + plotH - 4);
+    ctx.fillStyle = panel;
+    ctx.fillRect(lx - 3, ly - font, labelW + 6, font + 5);
+    ctx.fillStyle = text; ctx.textAlign = 'left';
+    ctx.fillText(label, lx, ly);
+  }
 }
 
 /* -------------------------------------------------------------------- vms */
@@ -1570,7 +2341,9 @@ function tickIdle() {
     // so there is no brightness control to reach from the browser.
     requestAnimationFrame(() => { dim.style.opacity = String(1 - ui.dim_level / 100); });
   }
-  if (ui.rotate_seconds > 0 && !state.guest
+  // Never cycle away from something the viewer deliberately opened.
+  if (ui.rotate_seconds > 0 && !state.guest && !state.usageDetail
+      && (state.fanDetail === null || state.fanDetail === undefined)
       && Date.now() - state.rotateAt > ui.rotate_seconds * 1000
       && state.page !== 'settings') {
     const order = PAGES.filter((p) => p.id !== 'settings').map((p) => p.id);
@@ -1721,13 +2494,48 @@ function main() {
   // would otherwise expose it or zoom the layout.
   window.addEventListener('contextmenu', (event) => event.preventDefault());
   window.addEventListener('dblclick', (event) => event.preventDefault());
-  window.addEventListener('resize', () => render());
+  window.addEventListener('resize', () => { closeRangeMenu(); render(); });
+
+  // Usage panels open to fill the page.
+  document.querySelectorAll('#perf-grid .panel.clickable').forEach((panel) => {
+    panel.addEventListener('click', () => openUsageDetail(panel.dataset.detail));
+    panel.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openUsageDetail(panel.dataset.detail);
+      }
+    });
+  });
+  document.getElementById('pd-back').onclick = closeUsageDetail;
+  document.getElementById('pd-timeframe').addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button || !button.dataset.timeframe) return;
+    state.detailTimeframe = button.dataset.timeframe;
+    fetchDetailRrd(true);
+    renderPerformance();
+  });
+
+  // Temps: the range picker and the fan detail view.
+  for (const id of ['temps-range', 'fd-range']) {
+    const button = document.getElementById(id);
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openRangeMenu(button);
+    });
+  }
+  document.getElementById('fd-back').onclick = closeFan;
+  document.addEventListener('click', (event) => {
+    const menu = document.getElementById('range-menu');
+    if (!menu.hidden && !menu.contains(event.target)) closeRangeMenu();
+  });
 
   poll().then(() => { pollRrd(); pollLive(); });
   setInterval(poll, POLL_MS);
   setInterval(pollLive, LIVE_MS);
   setInterval(pollRrd, RRD_MS);
   setInterval(() => { if (state.guest) fetchGuest(); }, GUEST_MS);
+  setInterval(() => pollFanHistory(), 5000);
+  setInterval(() => { if (state.usageDetail) fetchDetailRrd(); }, 60000);
   setInterval(tickClock, 1000);
   setInterval(tickIdle, 1000);
   tickClock();
