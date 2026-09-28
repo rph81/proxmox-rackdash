@@ -211,6 +211,17 @@
 
       <div class="panel span-all">
         <div class="panel-head">
+          <h2>Overview dials</h2>
+          <span class="tag" id="set-overview-tag"></span>
+          <span class="spacer"></span>
+          <span class="hint">Tap to show or hide. The Temps page always shows every sensor.</span>
+          <button type="button" id="set-overview-auto">Automatic</button>
+        </div>
+        <div class="picks" id="set-overview"></div>
+      </div>
+
+      <div class="panel span-all">
+        <div class="panel-head">
           <h2>Theme</h2>
           <span class="tag" id="set-theme-tag"></span>
           <span class="spacer"></span>
@@ -238,17 +249,6 @@
           <input type="text" id="set-glow-hex" class="hex" maxlength="7" spellcheck="false">
           <button type="button" id="set-glow-accent">Follow accent</button>
         </div>
-      </div>
-
-      <div class="panel span-all">
-        <div class="panel-head">
-          <h2>Overview dials</h2>
-          <span class="tag" id="set-overview-tag"></span>
-          <span class="spacer"></span>
-          <span class="hint">Tap to show or hide. The Temps page always shows every sensor.</span>
-          <button type="button" id="set-overview-auto">Automatic</button>
-        </div>
-        <div class="picks" id="set-overview"></div>
       </div>
 
       <div class="panel">
@@ -323,14 +323,16 @@
       <div class="panel">
         <div class="panel-head"><h2>Sources</h2></div>
         <div class="kv" id="set-sources"></div>
-        <label class="field-label">Temperature sensors</label>
+        <label class="field-label">Sensors available</label>
         <div class="seg wide" id="set-temp-source">
           <button type="button" data-source="fanctl-selected">Fan curves</button>
           <button type="button" data-source="all">All</button>
         </div>
         <p class="hint">
-          <strong>Fan curves</strong> shows exactly the sensors assigned to a fan
-          in the Commander Pro app, so ticking one there adds it here.
+          Which sensors rackdash reads from the fan app. <strong>Fan curves</strong>
+          takes the ones the fan app graphs; <strong>All</strong> takes every one.
+          The Temps page shows them all; pick individual Overview dials at the top
+          of Settings.
         </p>
         <div class="row">
           <div class="field">

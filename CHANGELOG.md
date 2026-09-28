@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.5.1]
+
+### Fixed
+- The kiosk kept showing the old page after an upgrade until someone pressed
+  F5, so new settings such as *Overview dials* never appeared on the Pi. The
+  page now reloads itself when the server reports a new version.
+- *Overview dials* moved to the top of Settings, where it is visible without
+  scrolling on the 400 px panel, and Settings always opens at the top.
+- The *Fan curves / All* switch is relabelled *Sensors available*, with a hint
+  that it chooses which sensors are read, not which Overview dials are shown.
+
 ## [1.5.0]
 
 ### Added

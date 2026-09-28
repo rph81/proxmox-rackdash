@@ -841,7 +841,10 @@ function showPage(id) {
   if (id !== 'temps') state.fanDetail = null;
   closeRangeMenu();
   render();
-  if (id === 'settings') renderSettings();
+  if (id === 'settings') {
+    document.getElementById('page-settings').scrollTop = 0;
+    renderSettings();
+  }
   if (id === 'temps') pollFanHistory(true);
 }
 
@@ -2493,6 +2496,14 @@ async function poll() {
   // rack display is a far worse outcome than the CPU this would save.
   try {
     const snapshot = await api('/api/state');
+    // After an upgrade the daemon restarts but the kiosk keeps running the
+    // page it loaded at boot, so new screens never appear until someone
+    // presses F5. Reload once the server reports a different version.
+    if (state.loadedVersion && snapshot.version && snapshot.version !== state.loadedVersion) {
+      location.reload();
+      return;
+    }
+    if (!state.loadedVersion) state.loadedVersion = snapshot.version;
     const first = !state.config;
     state.snapshot = snapshot;
     state.config = snapshot.config;
