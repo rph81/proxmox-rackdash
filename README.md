@@ -167,14 +167,14 @@ unexplained gap.
 This is the part that ties the two projects together. `corsair-fanctl` already
 knows which sensors matter: each fan carries a list of sensor ids, a catalog of
 id to human label, and the live readings. rackdash reads its `/api/state` and
-shows the union of sensors bound to a fan that is **enabled and in curve
-mode**, in fan order.
+shows exactly what the fan app graphs: every sensor any fan is assigned, in fan
+order, plus anything ticked under **Graph** in the fan app's Sensors dialog.
 
 So if fan 1 follows the hottest drive, fan 2 follows the CPU package and fan 3
-follows probe 1, the dashboard shows those three and nothing else. Assign a
-fourth sensor in the fan UI and a fourth dial appears within two seconds. A
-channel set to *fixed* or *off* is not following a temperature, so its sensors
-are not shown.
+follows probe 1, the dashboard shows those three. Assign another sensor, or tick
+one for the graph, and a dial appears within two seconds. A fan's mode does not
+matter: a fan set to *fixed* still reads its sensors, so its temperatures stay
+on the dashboard.
 
 Under **Settings → Temperature sensors** you can switch to **All** to show
 every sensor the fan controller knows about instead.

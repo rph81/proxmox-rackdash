@@ -235,14 +235,29 @@ def test_fanctl_selection():
         ]},
     }
 
-    # This is the feature: the dashboard mirrors what drives a fan curve.
-    check("only live curve sensors, in fan order, de-duplicated",
+    # The dashboard mirrors what the fan app graphs: every fan's sensors in
+    # any mode (fans 4 and 5 are fixed and disabled), in fan order, once each.
+    check("every fan's sensors, whatever its mode, de-duplicated",
           fanctl_module.selected_sensor_ids(state),
+          ["arcconf:1:max", "hwmon:coretemp:temp1", "cpro:temp1", "hwmon:nvme:temp1"])
+
+    # Regression: with every fan on fixed, the temperatures all vanished.
+    all_fixed = json.loads(json.dumps(state))
+    for fan in all_fixed["config"]["fans"]:
+        fan["mode"] = "fixed"
+    check("fixed fans keep their sensors on the dashboard",
+          fanctl_module.selected_sensor_ids(all_fixed)[:3],
           ["arcconf:1:max", "hwmon:coretemp:temp1", "cpro:temp1"])
 
+    # Sensors ticked under Graph in the fan app appear too, after the fans'.
+    graphed = json.loads(json.dumps(state))
+    graphed["config"]["ui"] = {"chart_sensors": ["cpro:temp2", "cpro:temp1"]}
+    check("graph selection added once, after fan sensors",
+          fanctl_module.selected_sensor_ids(graphed)[-1], "cpro:temp2")
+
     shaped = fanctl_module.shape(state)
-    check("three sensors shown", [s["id"] for s in shaped["sensors"]],
-          ["arcconf:1:max", "hwmon:coretemp:temp1", "cpro:temp1"])
+    check("every graphed sensor shown", [s["id"] for s in shaped["sensors"]],
+          ["arcconf:1:max", "hwmon:coretemp:temp1", "cpro:temp1", "hwmon:nvme:temp1"])
     close("reading attached", shaped["sensors"][0]["value"], 43.0)
     check("label from the catalog", shaped["sensors"][1]["label"], "CPU (Intel) · Package id 0")
     check("names the fans it drives", shaped["sensors"][0]["fans"],

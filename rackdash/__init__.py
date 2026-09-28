@@ -1,3 +1,3 @@
 """rackdash - a rack-mounted Proxmox dashboard for a small wide touchscreen."""
 
-__version__ = "1.4.0"
+__version__ = "1.4.1"

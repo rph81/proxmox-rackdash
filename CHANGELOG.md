@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.4.1]
+
+### Fixed
+- Switching fans to **fixed** mode in corsair-fanctl made every temperature
+  vanish from the dashboard: the Overview dials, the Temps dials and the Temps
+  history. Sensors were only taken from fans in curve mode, but a fixed fan
+  still reads its sensors. The dashboard now shows exactly what the fan app
+  graphs: every fan's sensors whatever its mode, plus anything ticked under
+  Graph in the fan app's Sensors dialog.
+
 ## [1.4.0]
 
 ### Added

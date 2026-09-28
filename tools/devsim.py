@@ -520,7 +520,7 @@ class FakeFanctl(BaseHTTPRequestHandler):
                         ]},
             "config": {
                 "fans": [{"index": f["index"], "name": f["name"], "enabled": True,
-                          "mode": "curve" if f["sensors"] else "off",
+                          "mode": os.environ.get("DEVSIM_FAN_MODE") or ("curve" if f["sensors"] else "off"),
                           "sensors": f["sensors"], "mix": "max",
                           "curve": f.get("curve") or [[30, 20], [70, 100]],
                           "min_duty": 20, "max_duty": 100, "fixed_duty": 50,

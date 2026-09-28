@@ -85,23 +85,30 @@ class Fanctl:
 
 
 def selected_sensor_ids(state: dict) -> list:
-    """Sensor ids bound to at least one live fan curve, in fan order.
+    """The sensors the fan app graphs, in fan order, de-duplicated.
 
-    Only fans that are enabled and in curve mode count: a channel set to fixed
-    or off is not following a temperature, so its sensors are not what the
-    dashboard should be showing.
+    That is every sensor any fan is assigned, whatever the fan's mode, plus
+    anything picked explicitly under Graph in the fan app's Sensors dialog.
+    Mode deliberately does not filter: a fan set to fixed still reads its
+    sensors and reports a control temperature, so dropping them made every
+    temperature vanish from the dashboard the moment fans were fixed. This
+    mirrors corsair-fanctl's own history chart, which made the same change.
     """
     ids: list = []
+
+    def add(sensor_id) -> None:
+        if isinstance(sensor_id, str) and sensor_id and sensor_id not in ids:
+            ids.append(sensor_id)
+
     config = state.get("config") if isinstance(state.get("config"), dict) else {}
     fans = config.get("fans") if isinstance(config.get("fans"), list) else []
     for fan in fans:
-        if not isinstance(fan, dict):
-            continue
-        if not fan.get("enabled") or fan.get("mode") != "curve":
-            continue
-        for sensor_id in fan.get("sensors") or []:
-            if isinstance(sensor_id, str) and sensor_id and sensor_id not in ids:
-                ids.append(sensor_id)
+        if isinstance(fan, dict):
+            for sensor_id in fan.get("sensors") or []:
+                add(sensor_id)
+    ui = config.get("ui") if isinstance(config.get("ui"), dict) else {}
+    for sensor_id in ui.get("chart_sensors") or []:
+        add(sensor_id)
     return ids
 
 
