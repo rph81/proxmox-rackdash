@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.6.0]
+
+### Added
+- **Curve | Fixed toggle on each fan.** A fan's detail view can switch the fan
+  between its curve and a fixed duty in corsair-fanctl. The change applies on
+  tap, with no Apply button. Fixed starts at the fan's current duty.
+- **Fixed-duty slider.** In fixed mode a slider sets the duty and applies while
+  you drag. It is bounded by the fan's own min and max duty so a stray swipe
+  cannot stop the fans. The server enforces the same bounds.
+- `POST /api/fan/<n>`, which forwards only `mode` and `fixed_duty` to the fan app.
+
 ## [1.5.1]
 
 ### Fixed

@@ -6,6 +6,7 @@ Run with:  python3 tools/selftest.py
 
 from __future__ import annotations
 
+import http.server
 import json
 import os
 import sys
@@ -363,9 +364,67 @@ class _StubCollector:
     def refresh(self):
         self.calls.append("refresh")
 
+    def set_fan(self, index, changes):
+        self.calls.append(("set_fan", index, changes))
+        return {"ok": True}
+
     def guest(self, kind, vmid, timeframe="hour"):
         self.calls.append((kind, vmid, timeframe))
         return {"id": vmid, "type": kind, "timeframe": timeframe}
+
+
+def test_fan_control():
+    print("fan mode and fixed duty")
+    clean = fanctl_module.clean_fan_patch
+    check("mode and duty kept", clean({"mode": "fixed", "fixed_duty": 42.4}),
+          {"mode": "fixed", "fixed_duty": 42})
+    check("nothing else forwarded", clean({"curve": [[0, 0]], "sensors": ["x"], "mode": "curve"}),
+          {"mode": "curve"})
+    for bad in ({"mode": "off"}, {"fixed_duty": "50"}, {"fixed_duty": True}):
+        try:
+            clean(bad)
+            check(f"refused {bad}", False, True)
+        except ValueError:
+            check(f"refused {bad}", True, True)
+    fan = {"min_duty": 20, "max_duty": 90}
+    check("duty raised to the fan's minimum",
+          fanctl_module.bound_fixed_duty({"fixed_duty": 0}, fan)["fixed_duty"], 20)
+    check("duty capped at the fan's maximum",
+          fanctl_module.bound_fixed_duty({"fixed_duty": 100}, fan)["fixed_duty"], 90)
+    check("mode-only change untouched", fanctl_module.bound_fixed_duty({"mode": "curve"}, fan),
+          {"mode": "curve"})
+
+    # The real fan app refuses a POST body that is not application/json.
+    seen = {}
+
+    class Fake(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            seen["path"] = self.path
+            seen["type"] = self.headers.get("Content-Type")
+            seen["token"] = self.headers.get("X-Auth-Token")
+            seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            payload = b'{"ok": true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Fake)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        client = fanctl_module.Fanctl(f"http://127.0.0.1:{server.server_address[1]}", token="t0k")
+        client.set_fan(3, {"mode": "fixed", "fixed_duty": 55})
+        check("posted to the fan's route", seen.get("path"), "/api/fan/3")
+        check("sent as JSON", seen.get("type"), "application/json")
+        check("token sent", seen.get("token"), "t0k")
+        check("body forwarded", seen.get("body"), {"mode": "fixed", "fixed_duty": 55})
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_http():
@@ -427,6 +486,18 @@ def test_http():
         check("fan history args parsed", stub.calls[-1], ("fan_history", 36000, 450))
         check("non-numeric range refused",
               request("GET", "/api/fan-history?range=forever")[0], 400)
+
+        # Changing a fan is state-changing, so it gets the same guard as config.
+        check("fan change from another site refused",
+              request("POST", "/api/fan/1", b'{"mode":"fixed"}',
+                      {"Content-Type": "application/json", "Origin": "http://evil.example"})[0], 403)
+        check("fan change allowed",
+              request("POST", "/api/fan/2", b'{"mode":"fixed","fixed_duty":40}',
+                      {"Content-Type": "application/json"})[0], 200)
+        check("fan change reaches the collector", stub.calls[-1],
+              ("set_fan", 2, {"mode": "fixed", "fixed_duty": 40}))
+        check("non-numeric fan refused",
+              request("POST", "/api/fan/x", b'{}', {"Content-Type": "application/json"})[0], 400)
 
         check("unknown route is 404", request("GET", "/api/nope")[0], 404)
         check("static traversal blocked", request("GET", "/../rackdash/config.py")[0], 404)
@@ -578,7 +649,7 @@ def test_host_stats():
 def main() -> int:
     for test in (test_config_normalisation, test_secrets_never_leave,
                  test_proxmox_shaping, test_fanctl_selection,
-                 test_due_and_history, test_host_stats, test_http):
+                 test_due_and_history, test_host_stats, test_fan_control, test_http):
         test()
         print()
     if FAILURES:

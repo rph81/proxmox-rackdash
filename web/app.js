@@ -1274,7 +1274,7 @@ function mountDial(containerId, dial) {
 function setKv(id, pairs) {
   const node = document.getElementById(id);
   const children = [];
-  for (const [key, value] of pairs) {
+  for (const [key, value] of pairs.filter(Boolean)) {
     children.push(el('dt', { text: key }));
     const dd = el('dd', { text: value });
     dd.title = value;
@@ -1496,9 +1496,108 @@ function fanControlSeries(fan, history) {
   });
 }
 
+/* ------------------------------------------------ fan mode & fixed duty */
+
+// A change is shown at once and held for a few seconds, so the next poll,
+// which may still carry the old value, cannot flick the toggle or the slider
+// back while the fan app catches up.
+const FAN_PENDING_MS = 6000;
+const FAN_SLIDE_DEBOUNCE_MS = 250;
+
+function withPendingFan(fan) {
+  const pending = state.fanPending;
+  if (!fan || !pending || pending.index !== fan.index || Date.now() > pending.until) return fan;
+  const merged = Object.assign({}, fan, pending.changes);
+  if (merged.mode === 'fixed') merged.reason = 'fixed';
+  else if (merged.mode === 'curve' && fan.reason === 'fixed') merged.reason = 'curve';
+  return merged;
+}
+
+function fanDutyBounds(fan) {
+  const low = isNum(fan.min_duty) ? fan.min_duty : 0;
+  const high = isNum(fan.max_duty) ? fan.max_duty : 100;
+  return [low, Math.max(low, high)];
+}
+
+async function sendFanChange(index, changes) {
+  const previous = state.fanPending && state.fanPending.index === index ? state.fanPending.changes : {};
+  state.fanPending = { index, changes: Object.assign({}, previous, changes),
+                       until: Date.now() + FAN_PENDING_MS };
+  renderTemps();
+  try {
+    await api(`/api/fan/${index}`, { method: 'POST', body: JSON.stringify(changes) });
+    if (state.fanPending && state.fanPending.index === index) {
+      state.fanPending.until = Date.now() + FAN_PENDING_MS;
+    }
+  } catch (error) {
+    state.fanPending = null;
+    toast(`Fan not changed: ${error.message}`, true);
+    renderTemps();
+  }
+}
+
+function setFanMode(mode) {
+  const raw = ((state.snapshot.temps || {}).fans || []).find((f) => f.index === state.fanDetail);
+  const fan = withPendingFan(raw);
+  if (!fan || fan.mode === mode) return;
+  const changes = { mode };
+  if (mode === 'fixed') {
+    // Start fixed at the duty the fan is running now, so switching modes
+    // never makes it lurch; the slider then moves it from there.
+    const [low, high] = fanDutyBounds(fan);
+    const start = isNum(fan.duty) ? fan.duty : fan.fixed_duty;
+    changes.fixed_duty = Math.round(clamp(isNum(start) ? start : 50, low, high));
+  }
+  sendFanChange(fan.index, changes);
+}
+
+function bindFanControls() {
+  document.querySelectorAll('#fd-mode button').forEach((button) => {
+    button.addEventListener('click', () => setFanMode(button.dataset.mode));
+  });
+  const slider = document.getElementById('fd-fixed');
+  let timer = null;
+  const send = () => {
+    clearTimeout(timer);
+    timer = null;
+    if (state.fanDetail === null || state.fanDetail === undefined) return;
+    sendFanChange(state.fanDetail, { fixed_duty: Number(slider.value) });
+  };
+  // Applied while sliding, not on release: a short debounce keeps a drag
+  // from sending a request per pixel, and the release sends the final value.
+  slider.addEventListener('input', () => {
+    state.fanSliding = true;
+    document.getElementById('fd-fixed-out').textContent = `${slider.value}%`;
+    clearTimeout(timer);
+    timer = setTimeout(send, FAN_SLIDE_DEBOUNCE_MS);
+  });
+  slider.addEventListener('change', () => { state.fanSliding = false; send(); });
+  for (const type of ['pointerup', 'pointercancel', 'touchend']) {
+    slider.addEventListener(type, () => { state.fanSliding = false; });
+  }
+}
+
+function renderFanControls(fan) {
+  document.querySelectorAll('#fd-mode button').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.mode === fan.mode));
+  });
+  const fixed = fan.mode === 'fixed';
+  document.getElementById('fd-fixed-row').hidden = !fixed;
+  if (!fixed) return;
+  const slider = document.getElementById('fd-fixed');
+  const [low, high] = fanDutyBounds(fan);
+  slider.min = String(low);
+  slider.max = String(high);
+  // Never move the thumb out from under a finger.
+  if (!state.fanSliding) {
+    slider.value = String(isNum(fan.fixed_duty) ? fan.fixed_duty : low);
+    document.getElementById('fd-fixed-out').textContent = `${slider.value}%`;
+  }
+}
+
 function renderFanDetail() {
   const temps = state.snapshot.temps || {};
-  const fan = (temps.fans || []).find((f) => f.index === state.fanDetail);
+  const fan = withPendingFan((temps.fans || []).find((f) => f.index === state.fanDetail));
   if (!fan) {                                   // the channel went away
     state.fanDetail = null;
     document.getElementById('temps-main').hidden = false;
@@ -1544,14 +1643,17 @@ function renderFanDetail() {
     : everSpun ? `${isNum(fan.rpm) ? fan.rpm : 0} rpm`
     : (isNum(duty) && duty > 0 ? 'no speed signal' : 'stopped');
   const labels = (fan.sensor_labels || []).map((l) => shortLabel(l, 16));
+  renderFanControls(fan);
+  // The toggle states the mode, so the list drops that row; in fixed mode the
+  // slider takes the room, and the stop threshold, which only a curve uses,
+  // makes way for it.
+  const fixed = fan.mode === 'fixed';
   setKv('fd-kv', [
     ['Speed', speedText],
-    ['Mode', fan.mode === 'curve' ? 'curve' : fan.mode === 'fixed'
-      ? `fixed ${fan.fixed_duty}%` : (fan.mode || '—')],
     ['Follows', labels.length > 1 ? `${MIX_LABEL[fan.mix] || fan.mix} of ${labels.length}`
       : (labels[0] || 'nothing')],
     ['Limits', isNum(fan.min_duty) ? `${fan.min_duty}–${fan.max_duty}% duty` : '—'],
-    ['Stops', isNum(fan.stop_below) ? `below ${fan.stop_below}°` : 'never'],
+    fixed ? null : ['Stops', isNum(fan.stop_below) ? `below ${fan.stop_below}°` : 'never'],
     ['Avg duty', isNum(dutyStats.avg) ? `${Math.round(dutyStats.avg)}% · ${rangeLabel(range)}` : '—'],
     ['Avg speed', everSpun && isNum(rpmStats.avg) ? `${Math.round(rpmStats.avg)} rpm` : '—'],
   ]);
@@ -2586,6 +2688,7 @@ function main() {
     });
   }
   document.getElementById('fd-back').onclick = closeFan;
+  bindFanControls();
   document.addEventListener('click', (event) => {
     const menu = document.getElementById('range-menu');
     if (!menu.hidden && !menu.contains(event.target)) closeRangeMenu();

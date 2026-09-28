@@ -122,6 +122,17 @@
       <div class="detail-body fan-body">
         <div class="panel detail-side">
           <div class="fd-dials" id="fd-dials"></div>
+          <div class="fd-mode">
+            <span class="fd-mode-label">Mode</span>
+            <div class="seg" id="fd-mode">
+              <button type="button" data-mode="curve">Curve</button>
+              <button type="button" data-mode="fixed">Fixed</button>
+            </div>
+          </div>
+          <div class="fd-fixed" id="fd-fixed-row" hidden>
+            <input type="range" id="fd-fixed" min="0" max="100" step="1" aria-label="Fixed duty">
+            <span class="readout" id="fd-fixed-out">—</span>
+          </div>
           <div class="kv detail-kv" id="fd-kv"></div>
         </div>
         <div class="panel detail-curve">

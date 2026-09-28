@@ -236,6 +236,9 @@ class World:
             self.duties[1] = _curve(hottest, [(35, 20), (40, 35), (45, 60), (50, 85), (55, 100)])
             self.duties[2] = _curve(self.temps["cpu"], [(30, 20), (45, 40), (60, 70), (75, 100)])
             self.duties[3] = _curve(self.temps["probe1"], [(25, 35), (35, 50), (45, 80), (55, 100)])
+            for index, setting in FAN_SETTINGS.items():
+                if setting["mode"] == "fixed":
+                    self.duties[index] = float(setting["fixed_duty"])
 
             now = time.time()
             if not self.fan_samples or now - self.fan_samples[-1]["t"] >= 2:
@@ -438,6 +441,12 @@ class FakeProxmox(BaseHTTPRequestHandler):
         self._json({"message": f"no handler for {path}"}, 501)
 
 
+# Per-fan mode and fixed duty, changed by POST /api/fan/<n> like the real app.
+FAN_SETTINGS = {f["index"]: {"mode": os.environ.get("DEVSIM_FAN_MODE")
+                             or ("curve" if f["sensors"] else "off"), "fixed_duty": 50}
+                for f in FAN_CHANNELS}
+
+
 class FakeFanctl(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -451,6 +460,26 @@ class FakeFanctl(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        parts = path.strip("/").split("/")
+        if len(parts) != 3 or parts[:2] != ["api", "fan"] or not parts[2].isdigit():
+            self.send_error(404)
+            return
+        if (self.headers.get("Content-Type") or "").split(";")[0] != "application/json":
+            self.send_error(403, "body must be application/json")
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(length) or b"{}")
+        index = int(parts[2])
+        with WORLD.lock:
+            setting = FAN_SETTINGS[index]
+            if body.get("mode") in ("curve", "fixed", "off"):
+                setting["mode"] = body["mode"]
+            if isinstance(body.get("fixed_duty"), (int, float)):
+                setting["fixed_duty"] = int(body["fixed_duty"])
+        self._send({"ok": True})
 
     def do_GET(self):
         path = urlparse(self.path).path
@@ -501,7 +530,8 @@ class FakeFanctl(BaseHTTPRequestHandler):
                               else 0 if f["type"] else None),
                       "control_temp": temps.get(f["sensors"][0]) if f["sensors"] else None,
                       "override": False,
-                      "reason": "curve" if f["sensors"] else "no-sensors"}
+                      "reason": (FAN_SETTINGS[f["index"]]["mode"] if FAN_SETTINGS[f["index"]]["mode"] != "curve"
+                                 else "curve" if f["sensors"] else "no-sensors")}
                      for f in FAN_CHANNELS],
             "sensors": SENSOR_CATALOG,
             "storage": {"enabled": True, "error": None, "stale": False,
@@ -520,10 +550,11 @@ class FakeFanctl(BaseHTTPRequestHandler):
                         ]},
             "config": {
                 "fans": [{"index": f["index"], "name": f["name"], "enabled": True,
-                          "mode": os.environ.get("DEVSIM_FAN_MODE") or ("curve" if f["sensors"] else "off"),
+                          "mode": FAN_SETTINGS[f["index"]]["mode"],
                           "sensors": f["sensors"], "mix": "max",
                           "curve": f.get("curve") or [[30, 20], [70, 100]],
-                          "min_duty": 20, "max_duty": 100, "fixed_duty": 50,
+                          "min_duty": 20, "max_duty": 100,
+                          "fixed_duty": FAN_SETTINGS[f["index"]]["fixed_duty"],
                           "stop_below": None} for f in FAN_CHANNELS],
                 "http": {"bind": "0.0.0.0", "port": 8899, "auth_token": None},
                 # Graphed for interest only, driving no fan: these belong on

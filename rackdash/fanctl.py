@@ -55,11 +55,27 @@ class Fanctl:
         samples = payload.get("samples") if isinstance(payload, dict) else None
         return samples if isinstance(samples, list) else []
 
-    def _get(self, path: str):
+    def set_fan(self, index: int, changes: dict) -> dict:
+        """Change one fan's mode or fixed duty in the fan app.
+
+        Only the two things the touchscreen offers can be sent: switching
+        between curve and fixed, and the fixed duty. Everything else about a
+        fan (sensors, curve, limits) stays the fan app's business.
+        """
+        body = clean_fan_patch(changes)
+        if not body:
+            raise ValueError("nothing to change: send mode and/or fixed_duty")
+        return self._get(f"/api/fan/{int(index)}", method="POST", body=body)
+
+    def _get(self, path: str, method: str = "GET", body: dict | None = None):
         if not self.configured:
             raise FanctlError("fan controller URL is not configured")
-        request = urllib.request.Request(f"{self.url}{path}", method="GET")
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        request = urllib.request.Request(f"{self.url}{path}", data=data, method=method)
         request.add_header("Accept", "application/json")
+        if data is not None:
+            # The fan app refuses a state-changing body sent as anything else.
+            request.add_header("Content-Type", "application/json")
         if self.token:
             request.add_header("X-Auth-Token", self.token)
         try:
@@ -82,6 +98,34 @@ class Fanctl:
         except (ValueError, OSError) as exc:
             raise FanctlError(f"bad response from the fan controller: {exc}") from exc
         return payload
+
+
+def clean_fan_patch(changes) -> dict:
+    """The subset of a fan change rackdash is allowed to forward."""
+    if not isinstance(changes, dict):
+        return {}
+    body: dict = {}
+    mode = changes.get("mode")
+    if mode is not None:
+        if mode not in ("curve", "fixed"):
+            raise ValueError("mode must be curve or fixed")
+        body["mode"] = mode
+    duty = changes.get("fixed_duty")
+    if duty is not None:
+        if isinstance(duty, bool) or not isinstance(duty, (int, float)) or duty != duty:
+            raise ValueError("fixed_duty must be a number")
+        body["fixed_duty"] = int(round(max(0.0, min(100.0, float(duty)))))
+    return body
+
+
+def bound_fixed_duty(body: dict, fan: dict) -> dict:
+    """Clamp a fixed duty to the fan's min/max duty from the fan app."""
+    if "fixed_duty" not in body:
+        return body
+    number = lambda v, d: v if isinstance(v, (int, float)) and not isinstance(v, bool) else d  # noqa: E731
+    low = number(fan.get("min_duty"), 0)
+    high = max(low, number(fan.get("max_duty"), 100))
+    return dict(body, fixed_duty=int(max(low, min(high, body["fixed_duty"]))))
 
 
 def selected_sensor_ids(state: dict) -> list:

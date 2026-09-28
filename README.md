@@ -37,7 +37,7 @@ Raspberry Pi 5                          Proxmox host
 │ rackdash daemon          │──── API ──▶│ pvedaemon :8006         │
 │  polls, caches, serves   │            │  (read-only API token)  │
 │                          │──── API ──▶│ corsair-fanctl :8899    │
-│ chromium --kiosk ────────┤            │  (fan curves + temps)   │
+│ chromium --kiosk ────────┤            │  (fans, curves, temps)  │
 │  → 127.0.0.1:8080        │            └─────────────────────────┘
 └──────────────────────────┘
    1280x400 touchscreen
@@ -145,6 +145,21 @@ one-minute RRD, over exactly the same last hour, so their time axes line up.
 The last point on each is the live reading, so a line ends at the value its
 dial shows. Charts are positioned by time rather than by sample, which is what
 lets series with different resolutions share an axis.
+
+### Switching a fan between curve and fixed
+
+A fan's view has a **Curve | Fixed** toggle. Tapping it changes the fan's mode
+in corsair-fanctl straight away, with no Apply button. Switching to **Fixed**
+starts at the duty the fan is running at that moment, so it never lurches, and
+shows a slider underneath. Dragging the slider applies as you go. **Curve**
+hands the fan back to its curve.
+
+The slider stops at the fan's own duty limits as set in corsair-fanctl. The fan
+app applies a fixed duty exactly as given, so without those bounds one stray
+swipe could stop every fan on that channel. rackdash can change only these two
+things. Sensors, curves and limits are still edited in the fan app. If the fan
+app has an `http.auth_token`, rackdash sends the `fanctl.token` it already
+holds.
 
 A 2-wire fan has no tachometer, so the controller reports `0 rpm` while it
 is plainly running. A channel that has never reported a speed is shown as
@@ -344,6 +359,7 @@ application/json`, so a page in another browser tab cannot reconfigure it.
 | `GET` | `/api/rrd?timeframe=hour` | The node's Proxmox RRD series; `hour`, `day`, `week` or `month` |
 | `GET` | `/api/fan-history?range=3600&points=400` | corsair-fanctl's recorded sensor, rpm and duty history, proxied |
 | `GET` | `/api/guest/{qemu,lxc}/<vmid>?timeframe=hour` | One guest's status and history |
+| `POST` | `/api/fan/<n>` | Set fan `n`'s `mode` (`curve` or `fixed`) and/or `fixed_duty`, forwarded to corsair-fanctl and kept within the fan's duty limits |
 | `GET` / `PUT` | `/api/config` | Read or patch the config (partial PUTs merge) |
 | `POST` | `/api/refresh` | Poll both sources immediately |
 | `GET` | `/api/healthz` | Liveness |

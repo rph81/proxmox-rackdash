@@ -21,6 +21,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from . import fanctl as fanctl_module
+
 LOG = logging.getLogger("rackdash.http")
 
 WEB_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
@@ -193,6 +195,16 @@ class Handler(BaseHTTPRequestHandler):
             if method == "PUT":
                 self._json(collector.update_config(self._body()))
                 return
+        if len(route) == 2 and route[0] == "fan" and method == "POST":
+            try:
+                index = int(route[1])
+            except ValueError as exc:
+                raise ValueError(f"invalid fan index: {route[1]}") from exc
+            try:
+                self._json(collector.set_fan(index, self._body()))
+            except fanctl_module.FanctlError as exc:
+                self._error(HTTPStatus.BAD_GATEWAY, str(exc))
+            return
         if route == ["refresh"] and method == "POST":
             collector.refresh()
             self._json({"ok": True})

@@ -717,6 +717,7 @@ input:focus, select:focus, button:focus-visible {
   grid-template-columns: 258px minmax(0, 1fr) 250px;
 }
 .detail-body.fan-body { grid-template-columns: 236px 300px minmax(0, 1fr); }
+.fan-body .detail-side { gap: 5px; }
 .detail-body .panel { min-height: 0; }
 .detail-main .spark, .detail-curve .spark { min-height: 60px; }
 .list-head h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 36%; }
@@ -725,9 +726,20 @@ input:focus, select:focus, button:focus-visible {
 .detail-dial .dial svg { max-height: 112px; }
 .detail-dial .dial .dial-label, .detail-dial .dial .dial-sub { display: none; }
 
-.fd-dials { flex: 0 0 auto; height: 104px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.fd-dials .dial svg { max-height: 82px; }
+.fd-dials { flex: 0 0 auto; height: 88px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.fd-dials .dial svg { max-height: 68px; }
 .fd-dials .dial .dial-sub { display: none; }
+
+/* Mode toggle and fixed-duty slider. Sized for a finger, not a mouse. */
+.fd-mode { display: flex; align-items: center; gap: 10px; }
+.fd-mode-label { font-size: 13px; color: var(--muted); flex: 1; }
+.fd-mode .seg button { min-height: 30px; padding: 3px 14px; font-size: 13px; }
+.fd-fixed { display: flex; align-items: center; gap: 10px; }
+.fd-fixed input[type=range] { flex: 1; min-width: 0; height: 26px; margin: 0; accent-color: var(--accent); }
+.fd-fixed input[type=range]:focus-visible { outline: none; }
+.fd-fixed .readout { font-family: ui-monospace, Menlo, monospace; font-size: 14px;
+                     font-weight: 600; min-width: 42px; text-align: right; }
+.fd-busy { opacity: .6; pointer-events: none; }
 
 .detail-kv { font-size: 13px; gap: 4px 10px; }
 .detail-kv dd { font-variant-numeric: tabular-nums; }

@@ -447,6 +447,27 @@ class Collector:
         self._rrd_cache[timeframe] = (now, shaped)
         return shaped
 
+    def set_fan(self, index: int, changes: dict) -> dict:
+        """Forward a mode or fixed-duty change to the fan app, then re-poll
+        at once so the dashboard reflects it without waiting a whole cycle."""
+        with self._lock:
+            client = self._fanctl
+            enabled = self.config["fanctl"]["enabled"]
+            fan = next((f for f in self._temps.get("fans", []) if f.get("index") == index), None)
+        if not enabled:
+            raise fanctl_module.FanctlError("the fan app is disabled in the config")
+        if fan is None:
+            raise ValueError(f"no such fan: {index}")
+        body = fanctl_module.clean_fan_patch(changes)
+        # Keep a fixed duty inside the fan's own limits. The fan app applies a
+        # fixed duty verbatim, so without this one slip of a finger on the
+        # touchscreen could stop every fan on the channel.
+        body = fanctl_module.bound_fixed_duty(body, fan)
+        client.set_fan(index, body)
+        self._fan_history_cache.clear()
+        self._wake_fan.set()
+        return {"ok": True, "index": index, **body}
+
     def fan_history(self, seconds: int, points: int = 400) -> dict:
         """The fan app's recorded history for the last `seconds`.
 
