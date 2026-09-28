@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.5.0]
+
+### Added
+- **Choose the Overview dials.** Settings has a new *Overview dials* panel with
+  one button per dial: CPU, Memory, Root disk, Network and every temperature
+  sensor. Tap to show or hide it on the Overview. *Automatic* hands the choice
+  back. The Temps page is unaffected and always shows every sensor.
+
+### Changed
+- By default the Overview shows the four system dials and only the sensors
+  that drive a fan. Sensors ticked under Graph in the fan app for interest
+  appear on the Temps page but no longer crowd the Overview, so eight dials
+  fit on one row instead of shrinking into two.
+
 ## [1.4.1]
 
 ### Fixed

@@ -649,6 +649,16 @@ input:focus, select:focus, button:focus-visible {
 .check { display: flex; align-items: center; gap: 7px; font-size: 12px; min-height: 30px; }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
+.picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.picks .pick {
+  padding: 6px 11px; border-radius: 7px; border: 1px solid var(--line);
+  background: transparent; color: var(--muted); font: inherit; font-size: 13px;
+  min-height: 34px; cursor: pointer;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.picks .pick[aria-pressed="true"] {
+  background: var(--accent-dim); color: var(--accent-strong); border-color: var(--accent);
+}
 .seg { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
 .seg.wide { width: 100%; }
 .seg button {
@@ -675,12 +685,12 @@ input:focus, select:focus, button:focus-visible {
 .picker-row input[type="color"] { width: 42px; height: 34px; padding: 2px; border-radius: 6px;
                                   background: var(--panel-2); border: 1px solid var(--line); }
 .picker-row .hex { width: 88px; font-family: ui-monospace, Menlo, monospace; }
-.picker-row button {
+.picker-row button, #set-overview-auto {
   background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
   border-radius: 6px; padding: 7px 10px; font: inherit; font-size: 12px; cursor: pointer;
   min-height: 34px; white-space: nowrap;
 }
-.picker-row button:disabled { opacity: .4; }
+.picker-row button:disabled, #set-overview-auto:disabled { opacity: .4; }
 
 .stops { display: flex; flex-direction: column; gap: 4px; }
 .stop { display: flex; align-items: center; gap: 6px; }

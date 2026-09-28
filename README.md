@@ -176,6 +176,13 @@ one for the graph, and a dial appears within two seconds. A fan's mode does not
 matter: a fan set to *fixed* still reads its sensors, so its temperatures stay
 on the dashboard.
 
+The Overview is a summary, so it is choosier. By default it shows CPU, memory,
+root disk and network plus only the sensors that drive a fan; sensors graphed
+purely for interest stay on the Temps page. Under **Settings → Overview dials**
+tap any dial to show or hide it there, or press **Automatic** to go back to the
+default. Once you have picked, new sensors added in the fan app appear on the
+Temps page only, until you pick them for the Overview too.
+
 Under **Settings → Temperature sensors** you can switch to **All** to show
 every sensor the fan controller knows about instead.
 

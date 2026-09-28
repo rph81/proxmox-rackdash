@@ -98,6 +98,13 @@ def test_config_normalisation():
           cfg.normalize({"ui": {"glow_color": "   "}})["ui"]["glow_color"], "")
     check("bad glow colour rejected",
           cfg.normalize({"ui": {"glow_color": "rebeccapurple"}})["ui"]["glow_color"], "")
+    check("overview dials automatic by default", base["ui"]["overview_dials"], None)
+    check("overview dials pinned, deduplicated",
+          cfg.normalize({"ui": {"overview_dials": ["cpu", " hwmon:x ", "cpu", 3, ""]}})["ui"]["overview_dials"],
+          ["cpu", "hwmon:x"])
+    check("empty overview list kept", cfg.normalize({"ui": {"overview_dials": []}})["ui"]["overview_dials"], [])
+    check("overview reset to automatic",
+          cfg.merge(cfg.normalize({"ui": {"overview_dials": ["cpu"]}}), {"ui": {"overview_dials": None}})["ui"]["overview_dials"], None)
     check("default temps range is an hour", base["ui"]["temps_range"], 3600)
     check("offered range accepted", cfg.normalize({"ui": {"temps_range": 36000}})["ui"]["temps_range"], 36000)
     check("unoffered range falls back",

@@ -896,10 +896,10 @@ function systemDials() {
   return dials;
 }
 
-function tempDials(containerId) {
+function tempDials(containerId, keep = () => true) {
   const temps = state.snapshot.temps || {};
   const ui = state.config.ui;
-  return (temps.sensors || []).map((sensor) => {
+  return (temps.sensors || []).filter(keep).map((sensor) => {
     const dial = dialFor(containerId, sensor.id, shortLabel(sensor.label));
     const value = sensor.value;
     const span = Math.max(ui.temp_max - ui.temp_min, 1);
@@ -926,9 +926,23 @@ function shortLabel(label, limit = 18) {
   return text.length > limit ? text.slice(0, limit - 1) + '…' : text;
 }
 
+/* The Overview is a summary, the Temps page is the full picture. Without a
+   choice made in Settings the Overview shows the system dials and only the
+   sensors that actually drive a fan; sensors graphed purely for interest in
+   the fan app stay on the Temps page. */
+const SYSTEM_DIALS = [['cpu', 'CPU'], ['memory', 'Memory'], ['disk', 'Root disk'], ['net', 'Network']];
+
+function overviewShows(id, sensor) {
+  const picked = state.config.ui.overview_dials;
+  if (Array.isArray(picked)) return picked.includes(id);
+  return !sensor || Boolean(sensor.fans && sensor.fans.length);
+}
+
 function renderOverview() {
   const container = document.getElementById('overview-dials');
-  layoutDials(container, [...systemDials(), ...tempDials('overview')]);
+  const shownSystem = systemDials().filter((_, i) => overviewShows(SYSTEM_DIALS[i][0]));
+  const shownTemps = tempDials('overview', (sensor) => overviewShows(sensor.id, sensor));
+  layoutDials(container, [...shownSystem, ...shownTemps]);
 
   const snapshot = state.snapshot;
   const system = snapshot.system || {};
@@ -2038,6 +2052,8 @@ function renderSettings() {
   document.getElementById('set-link').value = state.config.proxmox.link_mbit;
   document.getElementById('set-pve-interval').value = state.config.proxmox.interval;
 
+  renderOverviewPicker();
+
   const snapshot = state.snapshot || {};
   const pve = snapshot.proxmox || {};
   const temps = snapshot.temps || {};
@@ -2048,6 +2064,41 @@ function renderSettings() {
     ['Fan app', state.config.fanctl.url || 'not set'],
     ['Sensors', temps.error ? 'error' : `${(temps.sensors || []).length} shown`],
   ]);
+}
+
+/** One button per dial the Overview could show. The first tap turns the
+ *  automatic choice into an explicit list; "Automatic" hands it back. */
+function renderOverviewPicker() {
+  const ui = state.config.ui;
+  const sensors = ((state.snapshot || {}).temps || {}).sensors || [];
+  const options = [
+    ...SYSTEM_DIALS.map(([id, label]) => ({ id, label })),
+    ...sensors.map((sensor) => ({ id: sensor.id, label: shortLabel(sensor.label, 26), sensor })),
+  ];
+  const auto = !Array.isArray(ui.overview_dials);
+  const current = () => options.filter((o) => overviewShows(o.id, o.sensor)).map((o) => o.id);
+
+  const toggle = (id) => {
+    const picked = auto ? current() : ui.overview_dials.slice();
+    const at = picked.indexOf(id);
+    if (at >= 0) picked.splice(at, 1); else picked.push(id);
+    patchUi({ overview_dials: picked });
+    renderOverviewPicker();
+  };
+
+  document.getElementById('set-overview').replaceChildren(...options.map((option) => {
+    const button = el('button', { type: 'button', class: 'pick', text: option.label,
+                                  onclick: () => toggle(option.id) });
+    button.title = option.sensor ? option.sensor.label : option.label;
+    button.setAttribute('aria-pressed', String(overviewShows(option.id, option.sensor)));
+    return button;
+  }));
+  const shown = current().length;
+  document.getElementById('set-overview-tag').textContent =
+    `${shown} of ${options.length}${auto ? ' · automatic' : ''}`;
+  const reset = document.getElementById('set-overview-auto');
+  reset.disabled = auto;
+  reset.onclick = () => { patchUi({ overview_dials: null }); renderOverviewPicker(); };
 }
 
 function renderThemeGallery() {

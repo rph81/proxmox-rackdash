@@ -526,6 +526,9 @@ class FakeFanctl(BaseHTTPRequestHandler):
                           "min_duty": 20, "max_duty": 100, "fixed_duty": 50,
                           "stop_below": None} for f in FAN_CHANNELS],
                 "http": {"bind": "0.0.0.0", "port": 8899, "auth_token": None},
+                # Graphed for interest only, driving no fan: these belong on
+                # the Temps page but not, by default, on the Overview.
+                "ui": {"chart_sensors": ["hwmon:nvme:temp1", "hwmon:acpitz:temp1"]},
             },
         }
         body = json.dumps(payload).encode("utf-8")
