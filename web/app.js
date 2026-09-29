@@ -413,6 +413,10 @@ class Dial {
     const shownUnit = blank ? '' : unit;
     const below = shownUnit.trim().length > 1;
     this.unitText.textContent = below ? '' : shownUnit;
+    // A percent sign reads better set slightly apart from the digits; a
+    // degree sign stays attached, as temperatures are normally written.
+    const gap = !below && shownUnit.trim() === '%' ? '3' : '0';
+    if (this.unitText.getAttribute('dx') !== gap) this.unitText.setAttribute('dx', gap);
     this.unitBelow.textContent = below ? shownUnit.trim() : '';
     const valueY = below ? '49' : '53';
     if (this.valueText.getAttribute('y') !== valueY) this.valueText.setAttribute('y', valueY);

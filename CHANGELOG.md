@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.6.2]
+
+### Changed
+- Percentage dials leave a small gap between the digits and the % sign.
+  Temperatures keep the degree sign attached.
+
 ## [1.6.1]
 
 ### Fixed
