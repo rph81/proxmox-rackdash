@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.6.1]
+
+### Fixed
+- On dials with a word unit, such as Network in MB/s, the number and unit ran
+  over the arc. The unit now sits on its own line under the number. % and °
+  stay inline.
+
 ## [1.6.0]
 
 ### Added

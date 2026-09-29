@@ -376,6 +376,11 @@ class Dial {
     this.valueText.append(document.createTextNode('—'));
     this.valueText.append(this.unitText);
     svg.append(this.valueText);
+    // A word unit such as "MB/s" beside the number is wider than the gap in
+    // the arc and runs over the stroke, so it gets its own line underneath.
+    // Single-character units (% and °) stay inline.
+    this.unitBelow = svgEl('text', { class: 'dial-unit', x: 50, y: 66, 'font-size': 10 });
+    svg.append(this.unitBelow);
 
     // The secondary readout lives outside the SVG: inside it, a string like
     // "75.2 GB / 128 GB" is wider than the gap in the arc and spills over the
@@ -405,7 +410,12 @@ class Dial {
       this.arc.setAttribute('stroke', stroke);
       this._stroke = stroke;
     }
-    this.unitText.textContent = blank ? '' : unit;
+    const shownUnit = blank ? '' : unit;
+    const below = shownUnit.trim().length > 1;
+    this.unitText.textContent = below ? '' : shownUnit;
+    this.unitBelow.textContent = below ? shownUnit.trim() : '';
+    const valueY = below ? '49' : '53';
+    if (this.valueText.getAttribute('y') !== valueY) this.valueText.setAttribute('y', valueY);
     if (this.subNode.textContent !== (sub || '')) this.subNode.textContent = sub || '';
     this.subNode.title = sub || '';
 
