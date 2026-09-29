@@ -9,6 +9,8 @@
 #   --kiosk        also install the full-screen browser service on tty1
 #   --port 8080    listen on a different port
 #   --node pve     pin a node name (default: the first one the API reports)
+#   --homeassistant http://192.168.1.89/home/overview
+#                  add a Home page showing that Home Assistant dashboard
 #
 set -euo pipefail
 
@@ -27,6 +29,7 @@ PVE_NODE=""
 TOKEN_ID=""
 TOKEN_SECRET=""
 FANCTL_URL=""
+HA_URL=""
 WITH_KIOSK=0
 KIOSK_USER=""
 
@@ -41,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --token-id)        TOKEN_ID="${2:?--token-id needs a value}"; shift 2 ;;
     --token-secret)    TOKEN_SECRET="${2:?--token-secret needs a value}"; shift 2 ;;
     --fanctl)          FANCTL_URL="${2:?--fanctl needs a URL}"; shift 2 ;;
+    --homeassistant)   HA_URL="${2:?--homeassistant needs a URL}"; shift 2 ;;
     --port)            PORT="${2:?--port needs a value}"; shift 2 ;;
     --kiosk)           WITH_KIOSK=1; shift ;;
     --kiosk-user)      KIOSK_USER="${2:?--kiosk-user needs a name}"; WITH_KIOSK=1; shift 2 ;;
@@ -109,10 +113,13 @@ for key, value in (("host", "$PVE_HOST"), ("node", "$PVE_NODE"),
         cfg["proxmox"][key] = value
 if "$FANCTL_URL":
     cfg["fanctl"]["url"] = "$FANCTL_URL"
+if "$HA_URL":
+    cfg = c.normalize(dict(cfg, homeassistant={"url": "$HA_URL"}))
 cfg["http"]["port"] = int("$PORT")
 c.save(path, cfg)
 print("  proxmox:", cfg["proxmox"]["host"] or "(not set)")
 print("  fanctl: ", cfg["fanctl"]["url"] or "(not set)")
+print("  home assistant:", cfg["homeassistant"]["url"] or "(not set)")
 PY
 
 chown "$RUN_USER:$RUN_USER" "$CONFIG"

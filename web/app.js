@@ -136,6 +136,11 @@ const PAGES = [
   { id: 'temps',       label: 'Temps',     icon: 'M14 14.76V5a2 2 0 1 0-4 0v9.76a4 4 0 1 0 4 0z' },
   { id: 'vms',         label: 'VMs',       icon: 'M3 5h18v6H3zM3 13h18v6H3zM7 8h.01M7 16h.01' },
   { id: 'proxmox',     label: 'Node',      icon: 'M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
+  // Only shown once a Home Assistant URL is configured; see syncHomeAssistant.
+  // The icon is mdi:home-assistant from Material Design Icons (Apache-2.0),
+  // the one Home Assistant uses for itself. It is a filled shape, not a stroke.
+  { id: 'homeassistant', label: 'Home\nAssistant', filled: true,
+    icon: 'M21.8,13H20V21H13V17.67L15.79,14.88L16.5,15C17.66,15 18.6,14.06 18.6,12.9C18.6,11.74 17.66,10.8 16.5,10.8A2.1,2.1 0 0,0 14.4,12.9L14.5,13.61L13,15.13V9.65C13.66,9.29 14.1,8.6 14.1,7.8A2.1,2.1 0 0,0 12,5.7A2.1,2.1 0 0,0 9.9,7.8C9.9,8.6 10.34,9.29 11,9.65V15.13L9.5,13.61L9.6,12.9A2.1,2.1 0 0,0 7.5,10.8A2.1,2.1 0 0,0 5.4,12.9A2.1,2.1 0 0,0 7.5,15L8.21,14.88L11,17.67V21H4V13H2.25C1.83,13 1.42,13 1.42,12.79C1.43,12.57 1.85,12.15 2.28,11.72L11,3C11.33,2.67 11.67,2.33 12,2.33C12.33,2.33 12.67,2.67 13,3L17,7V6H19V9L21.78,11.78C22.18,12.18 22.59,12.59 22.6,12.8C22.6,13 22.2,13 21.8,13M7.5,12A0.9,0.9 0 0,1 8.4,12.9A0.9,0.9 0 0,1 7.5,13.8A0.9,0.9 0 0,1 6.6,12.9A0.9,0.9 0 0,1 7.5,12M16.5,12C17,12 17.4,12.4 17.4,12.9C17.4,13.4 17,13.8 16.5,13.8A0.9,0.9 0 0,1 15.6,12.9A0.9,0.9 0 0,1 16.5,12M12,6.9C12.5,6.9 12.9,7.3 12.9,7.8C12.9,8.3 12.5,8.7 12,8.7C11.5,8.7 11.1,8.3 11.1,7.8C11.1,7.3 11.5,6.9 12,6.9Z' },
   { id: 'settings',    label: 'Settings',  icon: 'M4 6h16M4 12h16M4 18h16M8 4v4M16 10v4M11 16v4' },
 ];
 
@@ -843,13 +848,54 @@ function buildNav() {
   const nav = document.getElementById('nav');
   nav.replaceChildren(...PAGES.map((page) => {
     const icon = svgEl('svg', { viewBox: '0 0 24 24' });
+    if (page.filled) icon.classList.add('filled');
     icon.append(svgEl('path', { d: page.icon }));
     const button = el('button', {
       type: 'button', onclick: () => showPage(page.id),
     }, icon, el('span', { text: page.label }));
     button.dataset.page = page.id;
+    // Hidden until the config says there is a dashboard to show.
+    if (page.id === 'homeassistant') button.hidden = true;
     return button;
   }));
+  nav.addEventListener('scroll', updateNavFade, { passive: true });
+  bindNavDrag(nav);
+  updateNavFade();
+}
+
+/** Fade whichever edge of the nav strip has more buttons beyond it. */
+function updateNavFade() {
+  const nav = document.getElementById('nav');
+  const room = nav.scrollHeight - nav.clientHeight;
+  nav.classList.toggle('more-above', room > 1 && nav.scrollTop > 1);
+  nav.classList.toggle('more-below', room > 1 && nav.scrollTop < room - 1);
+}
+
+/** Drag-to-scroll for panels that report touches as a mouse. Real touch
+ *  input scrolls natively; this only handles mouse-type pointers, and swallows
+ *  the click that ends a drag so a scroll never also switches page. */
+function bindNavDrag(nav) {
+  let drag = null;
+  nav.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    drag = { y: event.clientY, top: nav.scrollTop, moved: false };
+  });
+  window.addEventListener('pointermove', (event) => {
+    if (!drag) return;
+    const dy = event.clientY - drag.y;
+    if (!drag.moved && Math.abs(dy) < 6) return;
+    drag.moved = true;
+    nav.scrollTop = drag.top - dy;
+  });
+  window.addEventListener('pointerup', () => {
+    if (drag && drag.moved) {
+      const swallow = (event) => { event.stopPropagation(); event.preventDefault(); };
+      nav.addEventListener('click', swallow, true);
+      // The click, if any, follows pointerup at once; never eat a later tap.
+      setTimeout(() => nav.removeEventListener('click', swallow, true), 60);
+    }
+    drag = null;
+  });
 }
 
 function showPage(id) {
@@ -860,6 +906,9 @@ function showPage(id) {
     if (section) section.hidden = page.id !== id;
     const button = document.querySelector(`#nav button[data-page="${page.id}"]`);
     if (button) button.setAttribute('aria-current', String(page.id === id));
+    // The strip scrolls, so a page opened by auto-cycle or at start-up could
+    // otherwise be highlighted out of sight.
+    if (button && page.id === id && !button.hidden) button.scrollIntoView({ block: 'nearest' });
   }
   // A detail view belongs to its page. Leaving the page closes it, so coming
   // back always lands on the overview of that page rather than a stale zoom.
@@ -873,6 +922,35 @@ function showPage(id) {
     renderSettings();
   }
   if (id === 'temps') pollFanHistory(true);
+  if (id === 'homeassistant') syncHomeAssistant();
+}
+
+/* ---------------------------------------------------------- home assistant */
+
+const haUrl = () => ((state.config || {}).homeassistant || {}).url || '';
+
+/** Show the nav button only when a URL is set, and point the frame at it.
+ *  The frame loads the first time the page is opened and then stays loaded,
+ *  so switching pages does not reload Home Assistant or drop its login. */
+function syncHomeAssistant() {
+  const url = haUrl();
+  const button = document.querySelector('#nav button[data-page="homeassistant"]');
+  if (button && button.hidden !== !url) {
+    button.hidden = !url;
+    updateNavFade();
+  }
+  const frame = document.getElementById('ha-frame');
+  document.getElementById('ha-empty').hidden = !!url;
+  frame.hidden = !url;
+  if (!url) {
+    if (frame.dataset.src) { frame.removeAttribute('src'); delete frame.dataset.src; }
+    if (state.page === 'homeassistant') showPage('overview');
+    return;
+  }
+  if (state.page === 'homeassistant' && frame.dataset.src !== url) {
+    frame.dataset.src = url;
+    frame.src = url;
+  }
 }
 
 /* --------------------------------------------------------------- overview */
@@ -2172,9 +2250,15 @@ function renderSettings() {
 
   const startPage = document.getElementById('set-start-page');
   if (!startPage.options.length) {
-    for (const page of PAGES) startPage.append(el('option', { value: page.id, text: page.label }));
+    for (const page of PAGES) {
+      startPage.append(el('option', { value: page.id, text: page.label.replace('\n', ' ') }));
+    }
   }
   startPage.value = ui.start_page;
+  // Settings re-renders on every poll; never overwrite the field mid-edit.
+  const haInput = document.getElementById('set-ha-url');
+  if (document.activeElement !== haInput) haInput.value = haUrl();
+  document.getElementById('set-ha-tag').textContent = haUrl() ? 'on' : 'off';
   document.getElementById('set-rotate').value = ui.rotate_seconds;
   document.getElementById('set-dim-after').value = ui.dim_after;
   document.getElementById('set-dim-level').value = ui.dim_level;
@@ -2507,6 +2591,15 @@ function bindSettings() {
     patchUi({ start_page: event.target.value });
   });
 
+  document.getElementById('set-ha-url').addEventListener('change', (event) => {
+    const typed = event.target.value.trim();
+    saveConfig({ homeassistant: { url: typed } }).then((saved) => {
+      if (typed && !saved.homeassistant.url) toast('Not a valid http(s) URL', true);
+      event.target.blur();
+      render();
+    }).catch(() => {});
+  });
+
   document.getElementById('vm-back').onclick = () => { closeGuest(); renderVms(); };
   document.getElementById('vm-filter').addEventListener('click', (event) => {
     const button = event.target.closest('button');
@@ -2550,8 +2643,11 @@ function tickIdle() {
   if (ui.rotate_seconds > 0 && !state.guest && !state.usageDetail
       && (state.fanDetail === null || state.fanDetail === undefined)
       && Date.now() - state.rotateAt > ui.rotate_seconds * 1000
-      && state.page !== 'settings') {
-    const order = PAGES.filter((p) => p.id !== 'settings').map((p) => p.id);
+      && state.page !== 'settings' && state.page !== 'homeassistant') {
+    // Home Assistant is interactive and its touches never reach this page, so
+    // there is no telling whether someone is using it: never cycle to or from it.
+    const order = PAGES.filter((p) => p.id !== 'settings' && p.id !== 'homeassistant')
+      .map((p) => p.id);
     const next = order[(order.indexOf(state.page) + 1) % order.length];
     showPage(next);
   }
@@ -2592,6 +2688,7 @@ function render() {
     case 'proxmox': renderProxmox(); break;
     case 'settings': renderSettings(); break;
   }
+  syncHomeAssistant();
 }
 
 /** The Pi's own temperature, CPU and GPU. Distinct from the Proxmox numbers,
@@ -2703,11 +2800,17 @@ function main() {
   for (const event of ['pointerdown', 'touchstart', 'keydown', 'wheel']) {
     window.addEventListener(event, noteActivity, { passive: true });
   }
+  // Touches inside the Home Assistant frame are delivered to the frame, not
+  // here. The one sign left is this window losing focus to it, which at least
+  // counts the first tap into Home Assistant as activity for the dimmer.
+  window.addEventListener('blur', () => {
+    if (document.activeElement && document.activeElement.id === 'ha-frame') noteActivity();
+  });
   // A kiosk has no browser chrome to reach, so suppress the gestures that
   // would otherwise expose it or zoom the layout.
   window.addEventListener('contextmenu', (event) => event.preventDefault());
   window.addEventListener('dblclick', (event) => event.preventDefault());
-  window.addEventListener('resize', () => { closeRangeMenu(); render(); });
+  window.addEventListener('resize', () => { closeRangeMenu(); updateNavFade(); render(); });
 
   // Usage panels open to fill the page.
   document.querySelectorAll('#perf-grid .panel.clickable').forEach((panel) => {

@@ -21,6 +21,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from . import config as config_module
 from . import fanctl as fanctl_module
 
 LOG = logging.getLogger("rackdash.http")
@@ -62,14 +63,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-            "connect-src 'self'; base-uri 'none'; form-action 'none'",
-        )
+        self.send_header("Content-Security-Policy", self._csp())
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def _csp(self) -> str:
+        # The only thing ever framed is the configured Home Assistant page, so
+        # frame-src names exactly its origin and nothing else.
+        frames = "'self'"
+        if self.collector is not None:
+            origin = config_module.frame_origin(self.collector.config)
+            if origin:
+                frames += " " + origin
+        return ("default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                f"connect-src 'self'; frame-src {frames}; base-uri 'none'; form-action 'none'")
 
     def _json(self, payload, status: int = 200):
         self._send(status, json.dumps(payload).encode("utf-8"),

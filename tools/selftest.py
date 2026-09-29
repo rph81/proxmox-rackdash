@@ -114,6 +114,22 @@ def test_config_normalisation():
                      {"ui": {"theme": "bambu"}})["ui"]
     check("changing theme keeps the backdrop", kept["pattern"], "circuit")
 
+    # The Home Assistant URL becomes an iframe src and a CSP source.
+    ha = lambda url: cfg.normalize({"homeassistant": {"url": url}})["homeassistant"]["url"]
+    check("home assistant off by default", base["homeassistant"]["url"], "")
+    check("dashboard path kept", ha("http://192.168.1.89/home/overview"),
+          "http://192.168.1.89/home/overview")
+    check("bare host gets http", ha("192.168.1.89:8123/lovelace/0"),
+          "http://192.168.1.89:8123/lovelace/0")
+    check("javascript url refused", ha("javascript:alert(1)"), "")
+    check("quote in url refused", ha("http://ha.lan/'onload"), "")
+    check("space in url refused", ha("http://ha.lan/a b"), "")
+    check("frame origin", cfg.frame_origin(cfg.normalize(
+        {"homeassistant": {"url": "https://ha.lan:8123/x?y=1"}})), "https://ha.lan:8123")
+    check("no frame origin when off", cfg.frame_origin(base), "")
+    check("home assistant is a start page",
+          cfg.normalize({"ui": {"start_page": "homeassistant"}})["ui"]["start_page"], "homeassistant")
+
 
 def test_secrets_never_leave():
     print("secret handling")
@@ -519,6 +535,16 @@ def test_http():
 
         check("unknown route is 404", request("GET", "/api/nope")[0], 404)
         check("static traversal blocked", request("GET", "/../rackdash/config.py")[0], 404)
+
+        # Framing is allowed for the configured Home Assistant origin only.
+        def csp():
+            with urllib.request.urlopen(base + "/", timeout=5) as response:
+                return response.headers.get("Content-Security-Policy", "")
+        check("no foreign frames by default", "frame-src 'self';" in csp(), True)
+        stub.config = cfg.normalize(dict(stub.config,
+                                         homeassistant={"url": "http://192.168.1.89/home/overview"}))
+        check("home assistant origin framed",
+              "frame-src 'self' http://192.168.1.89;" in csp(), True)
     finally:
         server.shutdown()
         server.server_close()

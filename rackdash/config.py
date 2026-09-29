@@ -17,6 +17,7 @@ import os
 import re
 import tempfile
 from typing import Any
+from urllib.parse import urlsplit
 
 MAX_FAVORITES = 10
 
@@ -28,7 +29,7 @@ MAX_FAVORITES = 10
 DEFAULT_USAGE_STOPS = [[0, "#3fb950"], [55, "#d29922"], [75, "#db6d28"], [90, "#f85149"]]
 DEFAULT_TEMP_STOPS = [[30, "#3fb950"], [50, "#d29922"], [65, "#db6d28"], [80, "#f85149"]]
 
-PAGES = ("overview", "performance", "temps", "vms", "proxmox", "settings")
+PAGES = ("overview", "performance", "temps", "vms", "proxmox", "homeassistant", "settings")
 
 # The Temps history picker. Ten hours is the ceiling because that is as far
 # back as the fan app is useful to keep; it has to be configured to retain it.
@@ -79,6 +80,12 @@ def default_config() -> dict:
             # the dashboard follows what you pick in the fan UI.
             "source": "fanctl-selected",   # fanctl-selected | all | list
             "sensors": [],                 # explicit ids when source == "list"
+        },
+        # A Home Assistant dashboard shown on its own page, framed as-is. The
+        # page and its nav button only appear once a URL is set. HA refuses
+        # to be framed until its "use X-Frame-Options" setting is turned off.
+        "homeassistant": {
+            "url": "",                     # http://192.168.1.89/home/overview
         },
         "ui": {
             "theme": "midnight",           # see THEMES
@@ -195,6 +202,39 @@ def _normalize_url(value: Any, fallback: str = "") -> str:
     return url.rstrip("/")
 
 
+def _page_url(value: Any) -> str:
+    """A full http(s) URL, path included, or blank.
+
+    Unlike `_normalize_url` the path is kept, because it picks the dashboard.
+    Anything that is not a plain http(s) URL is dropped: the value becomes an
+    iframe src and a CSP source, so a javascript: URL or a stray quote must
+    never get through.
+    """
+    url = _text(value, "", 500)
+    if not url:
+        return ""
+    if "://" not in url:
+        # "ha.lan:8123/x" is a host and port; "javascript:..." is a scheme.
+        if re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:(?!\d)", url):
+            return ""
+        url = "http://" + url
+    if re.search(r"[\s\"'<>\\;]", url):
+        return ""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return ""
+    return url
+
+
+def frame_origin(cfg: dict) -> str:
+    """scheme://host[:port] of the framed dashboard, for the CSP frame-src."""
+    url = cfg.get("homeassistant", {}).get("url", "")
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
 def normalize(raw: Any) -> dict:
     """Return a fully-populated, range-checked config from arbitrary input."""
     cfg = default_config()
@@ -233,6 +273,9 @@ def normalize(raw: Any) -> dict:
     if isinstance(sensors, list):
         fan["sensors"] = [s.strip()[:128] for s in sensors
                           if isinstance(s, str) and s.strip()][:16]
+
+    ha_raw = raw.get("homeassistant") if isinstance(raw.get("homeassistant"), dict) else {}
+    cfg["homeassistant"]["url"] = _page_url(ha_raw.get("url"))
 
     ui_raw = raw.get("ui") if isinstance(raw.get("ui"), dict) else {}
     ui = cfg["ui"]

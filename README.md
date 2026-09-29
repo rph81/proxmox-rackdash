@@ -15,7 +15,9 @@ curve** in [corsair-fanctl](https://github.com/rph81/corsair-fanctl) — tick a
 new sensor there and it appears here on the next poll.
 
 - Six pages, switched from a vertical touch strip: **Overview**, **Usage**,
-  **Temps**, **VMs**, **Node**, **Settings**.
+  **Temps**, **VMs**, **Node**, **Settings** — plus an optional **Home
+  Assistant** page that shows a Home Assistant dashboard. The strip scrolls with a finger drag
+  when the buttons no longer fit.
 - Animated **arc dials** (a 288° sweep, not a full circle) whose colour moves
   smoothly from green through amber and orange to red as a value climbs.
 - **Twelve global themes**, including a black-and-yellow *Bambu* to match a
@@ -123,7 +125,27 @@ temperature sensors were picked up from the fan controller.
 | **Temps** | Large dials for the selected sensors, a history chart with a 5 minute to 10 hour range picker, and every fan channel. Tap a fan to open it. |
 | **VMs** | Every VM and container as a tile with live CPU and memory bars. Tap one for its own dials and hour/day/week history. |
 | **Node** | Proxmox and kernel versions, CPU model, uptime, storage pools and recent tasks. |
+| **Home Assistant** | A Home Assistant dashboard, full-page. Only shown once a URL is set; see below. |
 | **Settings** | Themes, accent, dial colour ramps, screen behaviour and source status. |
+
+### Home Assistant page
+
+Set the dashboard URL in Settings → Home Assistant, in the config file
+(`"homeassistant": {"url": "http://192.168.1.89/home/overview"}`), or with
+`install.sh --homeassistant <url>`. The page frames Home Assistant as-is, so two
+things are needed on the Home Assistant side:
+
+- **Allow framing.** Home Assistant sends `X-Frame-Options: SAMEORIGIN` by
+  default, which leaves the page blank. Turn off *use X-Frame-Options* in its
+  HTTP settings (`http: use_x_frame_options: false` on YAML-configured setups).
+- **Sign in once on the Pi.** The login is remembered by the kiosk browser. A
+  kiosk has no keyboard, so either sign in with a USB keyboard attached, or add
+  the Pi to a `trusted_networks` auth provider so it signs in without a
+  password.
+
+Touches inside Home Assistant go to Home Assistant, not to rackdash, so
+auto-cycle never moves to or from this page, and the dimmer only sees the first
+tap into it.
 
 ## Detail views
 

@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.8.0]
+
+### Added
+- **Home Assistant page.** Set a URL in Settings → Home Assistant (or
+  `homeassistant.url` in the config, or `install.sh --homeassistant`) and a
+  Home Assistant button, with Home Assistant's own mdi:home-assistant icon,
+  appears in the strip, showing that dashboard full-page below the header. The frame loads the first time
+  the page opens and then stays loaded, so switching pages does not reload
+  Home Assistant or lose its login. The page's Content-Security-Policy allows
+  framing that one origin and nothing else. Auto-cycle skips the page, since
+  touches inside it never reach rackdash.
+
+### Changed
+- **The page strip scrolls instead of squeezing.** Buttons keep a 66px touch
+  target; when they no longer fit the panel's height the strip scrolls with a
+  finger drag, with no scrollbar and a fade on whichever edge has more. The
+  open page's button is scrolled into view when auto-cycle or start-up picks
+  it.
+
 ## [1.7.0]
 
 ### Added

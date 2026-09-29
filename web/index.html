@@ -216,6 +216,15 @@
     </div>
   </section>
 
+  <!-- ---------------------------------------------------- home assistant -->
+  <section class="page" id="page-homeassistant" hidden>
+    <iframe id="ha-frame" title="Home Assistant" hidden
+            allow="fullscreen; autoplay" referrerpolicy="no-referrer"></iframe>
+    <p class="hint ha-empty" id="ha-empty">
+      Set a Home Assistant dashboard URL under Settings → Home Assistant.
+    </p>
+  </section>
+
   <!-- ---------------------------------------------------------- settings -->
   <section class="page scroll" id="page-settings" hidden>
     <div class="settings-grid">
@@ -360,6 +369,20 @@
         <p class="hint">
           The Proxmox host and API token live in the config file on this Pi and
           cannot be set from this screen.
+        </p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Home Assistant</h2><span class="tag" id="set-ha-tag"></span></div>
+        <div class="field">
+          <label for="set-ha-url">Dashboard URL</label>
+          <input type="text" id="set-ha-url" spellcheck="false" autocomplete="off"
+                 placeholder="http://192.168.1.89/home/overview">
+        </div>
+        <p class="hint">
+          Adds a Home Assistant page showing this dashboard. Leave blank to hide it.
+          Home Assistant must allow framing: turn off <strong>use X-Frame-Options</strong>
+          in its HTTP settings.
         </p>
       </div>
 
