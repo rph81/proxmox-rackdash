@@ -548,6 +548,9 @@ class FakeFanctl(BaseHTTPRequestHandler):
                              "usage_remaining": 71, "power_on_hours": 43818,
                              "smart_warning": False},
                         ]},
+            # A 10G NIC in use and a 1G one with no cable, as on the real rack.
+            "nics": [{"name": "eno1", "up": False, "speed_mbit": None, "state": "down"},
+                     {"name": "enp1s0f0", "up": True, "speed_mbit": 10000, "state": "up"}],
             "config": {
                 "fans": [{"index": f["index"], "name": f["name"], "enabled": True,
                           "mode": FAN_SETTINGS[f["index"]]["mode"],

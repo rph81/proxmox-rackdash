@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.7.0]
+
+### Added
+- **Network dials scale to the host's real link capacity.** With
+  corsair-fanctl 1.7 or later, rackdash reads each physical NIC's speed and
+  whether it is connected, and sets the network dials' full scale to the sum
+  of the connected ones. A 10 Gbit/s NIC with an unplugged 1 Gbit/s NIC scales
+  to 10 Gbit/s, and to 11 once the second is plugged in. Settings has a
+  checkbox to turn this off and use the typed speed instead, and says which
+  NICs it is using. The Network detail tag shows how many NICs are up.
+
+### Fixed
+- The Usage network dial and the Network detail dial showed Mb/s while the
+  Overview dial and every table showed MB/s. All network dials now use MB/s.
+- The link tag read "1 GB/S LINK" because tags are uppercased. Link speeds
+  are now written as Gbit/s, which stays unambiguous in capitals.
+
 ## [1.6.3]
 
 ### Changed

@@ -65,6 +65,9 @@ def default_config() -> dict:
             "timeout": 8.0,
             "interval": 2.0,               # seconds between polls
             "link_mbit": 1000,             # NIC speed, for the network dial scale
+            # Take the scale from the host's connected NICs, as reported by
+            # corsair-fanctl 1.7+, falling back to link_mbit without it.
+            "link_auto": True,
         },
         "fanctl": {
             "enabled": True,
@@ -213,6 +216,7 @@ def normalize(raw: Any) -> dict:
     pve["timeout"] = round(_num(pve_raw.get("timeout"), 1.0, 60.0, pve["timeout"]), 1)
     pve["interval"] = round(_num(pve_raw.get("interval"), 1.0, 60.0, pve["interval"]), 1)
     pve["link_mbit"] = _int(pve_raw.get("link_mbit"), 1, 100000, pve["link_mbit"])
+    pve["link_auto"] = bool(pve_raw.get("link_auto", pve["link_auto"]))
 
     fan_raw = raw.get("fanctl") if isinstance(raw.get("fanctl"), dict) else {}
     fan = cfg["fanctl"]

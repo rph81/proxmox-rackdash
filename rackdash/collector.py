@@ -389,11 +389,14 @@ class Collector:
     def snapshot(self) -> dict:
         with self._lock:
             now = time.time()
+            system = dict(self._system)
+            if isinstance(system.get("net"), dict):
+                system["net"] = dict(system["net"], **self._link())
             return {
                 "version": __version__,
                 "time": now,
                 "warning": self.config_warning,
-                "system": dict(self._system),
+                "system": system,
                 "proxmox": {
                     "ok": self._pve_error is None and bool(self._system),
                     "error": self._pve_error,
@@ -417,6 +420,17 @@ class Collector:
                 },
                 "config": config_module.public(self.config),
             }
+
+    def _link(self) -> dict:
+        """The network dials' full scale. Caller holds the lock."""
+        nics = self._temps.get("nics")
+        detected = fanctl_module.link_capacity(nics)
+        auto = self.config["proxmox"]["link_auto"] and detected is not None
+        return {
+            "link_mbit": detected if auto else self.config["proxmox"]["link_mbit"],
+            "link_source": "auto" if auto else "manual",
+            "nics": nics if isinstance(nics, list) else [],
+        }
 
     def live(self) -> dict:
         return {"system": self._live.series(), "temps": self._temp_live.series()}

@@ -312,7 +312,8 @@ because it holds the API token.
     "token_secret": "…",        // file-only, never settable over HTTP
     "verify_tls": false,        // PVE ships a self-signed certificate
     "interval": 2.0,
-    "link_mbit": 1000           // NIC speed, scales the network dial
+    "link_mbit": 1000,          // fallback NIC speed for the network dials
+    "link_auto": true           // use the host's connected NICs (fanctl 1.7+)
   },
   "fanctl": {
     "enabled": true,
@@ -333,6 +334,17 @@ because it holds the API token.
   }
 }
 ```
+
+### Network dial scale
+
+The Proxmox API reports traffic but not link speeds. corsair-fanctl 1.7 and
+later runs on the host and reports each physical NIC's speed and whether it
+is connected, and rackdash scales the network dials to the total of the
+connected NICs. Proxmox's node traffic counts every physical interface, so a
+10 Gbit/s NIC plus an unplugged 1 Gbit/s NIC scales to 10 Gbit/s, and to 11
+when the second is plugged in. Settings → Sources shows which NICs are used.
+With an older fan app, or with the checkbox off, `link_mbit` is used instead.
+Every network dial reads in MB/s, like the tables.
 
 `proxmox.host`, `proxmox.token_secret` and `fanctl.token` are **file-only**.
 Everything that reaches the dashboard port could otherwise repoint the daemon

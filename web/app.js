@@ -823,9 +823,18 @@ function fmtDuration(seconds) {
   return `${hours < 10 ? hours.toFixed(1).replace(/\.0$/, '') : Math.round(hours)} h`;
 }
 
+/** "enp1s0 10 Gbit/s, eno1 not connected" */
+function nicSummary(nics) {
+  if (!nics || !nics.length) return 'no NICs reported';
+  return nics.map((n) => `${n.name} ${n.up ? (n.speed_mbit ? fmtLink(n.speed_mbit) : 'up') : 'not connected'}`)
+    .join(', ');
+}
+
 function fmtLink(mbit) {
+  // Spelled "Gbit/s" rather than "Gb/s": the tag it sits in is uppercased,
+  // and "GB/S" would read as gigabytes next to dials that show MB/s.
   if (!isNum(mbit)) return '—';
-  return mbit >= 1000 ? `${+(mbit / 1000).toFixed(1)} Gb/s` : `${mbit} Mb/s`;
+  return mbit >= 1000 ? `${+(mbit / 1000).toFixed(1)} Gbit/s` : `${mbit} Mbit/s`;
 }
 
 /* -------------------------------------------------------------------- nav */
@@ -1061,7 +1070,7 @@ function renderPerformance() {
   const netDial = dialFor('perf', 'net', 'NETWORK');
   netDial.update({
     percent: known ? (total / linkBytes) * 100 : null,
-    value: known ? (total * 8) / 1e6 : null, unit: ' Mb/s', decimals: 1,
+    value: known ? total / (1024 * 1024) : null, unit: ' MB/s', decimals: 1,
     color: usageColor(known ? (total / linkBytes) * 100 : 0), blank: !known,
   });
   mountDial('perf-net-dial', netDial);
@@ -1240,11 +1249,16 @@ function renderUsageDetail() {
   const current = (isNum(net.in) ? net.in : 0) + (isNum(net.out) ? net.out : 0);
   const known = isNum(net.in) || isNum(net.out);
   setText('pd-title', 'Network');
-  setText('pd-tag', `${fmtLink(linkMbit)} link`);
+  const nics = net.nics || [];
+  const upCount = nics.filter((n) => n.up).length;
+  setText('pd-tag', nics.length > 1
+    ? `${fmtLink(linkMbit)} · ${upCount} of ${nics.length} NICs up`
+    : `${fmtLink(linkMbit)} link`);
+  document.getElementById('pd-tag').title = nicSummary(nics);
   const dial = dialFor('pd', 'net', 'NETWORK');
   dial.update({
     percent: known ? (current / linkBytes) * 100 : null,
-    value: known ? (current * 8) / 1e6 : null, unit: ' Mb/s', decimals: 1,
+    value: known ? current / (1024 * 1024) : null, unit: ' MB/s', decimals: 1,
     color: usageColor(known ? (current / linkBytes) * 100 : 0), blank: !known,
   });
   mountDial('pd-dial', dial);
@@ -2173,6 +2187,18 @@ function renderSettings() {
   document.getElementById('set-header-scale').value = ui.header_scale;
   document.getElementById('set-header-scale-out').textContent = `${ui.header_scale}%`;
   document.getElementById('set-link').value = state.config.proxmox.link_mbit;
+  const link = (((state.snapshot || {}).system || {}).net) || {};
+  const nics = link.nics || [];
+  const linkAuto = state.config.proxmox.link_auto;
+  document.getElementById('set-link-auto').checked = linkAuto;
+  // With detection on and working, the typed speed is only a fallback, so
+  // it is disabled rather than silently ignored.
+  document.getElementById('set-link').disabled = linkAuto && link.link_source === 'auto';
+  document.getElementById('set-link-note').textContent = !linkAuto
+    ? 'Network dials use the speed typed above.'
+    : link.link_source === 'auto'
+      ? `Using ${fmtLink(link.link_mbit)} from ${nicSummary(nics)}.`
+      : 'The fan app does not report NICs (needs corsair-fanctl 1.7 or later), so the speed above is used.';
   document.getElementById('set-pve-interval').value = state.config.proxmox.interval;
 
   renderOverviewPicker();
@@ -2471,6 +2497,11 @@ function bindSettings() {
   check('set-chart-fill', (v) => patchUi({ chart_fill: v }));
   check('set-clock24', (v) => patchUi({ clock_24h: v }));
   check('set-show-pi', (v) => patchUi({ show_pi: v }));
+  check('set-link-auto', (v) => {
+    state.config.proxmox.link_auto = v;
+    saveConfig({ proxmox: { link_auto: v } }).then(() => poll()).catch(() => {});
+    renderSettings();
+  });
 
   document.getElementById('set-start-page').addEventListener('change', (event) => {
     patchUi({ start_page: event.target.value });

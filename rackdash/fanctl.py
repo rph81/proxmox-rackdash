@@ -241,7 +241,40 @@ def shape(state: dict, source: str = "fanctl-selected",
         "sensors": sensors,
         "fans": fans,
         "storage": _shape_storage(state),
+        "nics": shape_nics(state),
     }
+
+
+def shape_nics(state: dict):
+    """The host's physical NICs, or None from a fan app too old to say."""
+    raw = state.get("nics")
+    if not isinstance(raw, list):
+        return None
+    nics = []
+    for nic in raw:
+        if not isinstance(nic, dict) or not isinstance(nic.get("name"), str):
+            continue
+        speed = nic.get("speed_mbit")
+        nics.append({
+            "name": nic["name"][:32],
+            "up": bool(nic.get("up")),
+            "speed_mbit": speed if isinstance(speed, int) and not isinstance(speed, bool)
+                          and speed > 0 else None,
+        })
+    return nics
+
+
+def link_capacity(nics) -> int | None:
+    """Total speed of the NICs that are connected, in Mbit/s.
+
+    Proxmox's node traffic counts every physical interface, so the gauge's
+    full scale is their sum. A NIC without a cable adds nothing until it is
+    plugged in, and then the scale grows by its speed on the next poll.
+    """
+    if not isinstance(nics, list):
+        return None
+    total = sum(n["speed_mbit"] for n in nics if n.get("up") and n.get("speed_mbit"))
+    return total or None
 
 
 def _clean_curve(raw) -> list:

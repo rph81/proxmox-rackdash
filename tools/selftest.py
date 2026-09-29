@@ -310,6 +310,24 @@ def test_fanctl_selection():
           fanctl_module.selected_sensor_ids({"config": {"fans": [
               {"index": 1, "enabled": True, "mode": "curve", "sensors": []}]}}), [])
 
+    # Link capacity: the network dials scale to the connected NICs only.
+    nics = fanctl_module.shape_nics({"nics": [
+        {"name": "enp1s0", "up": True, "speed_mbit": 10000},
+        {"name": "eno1", "up": False, "speed_mbit": None},
+        {"name": 7}, "junk",
+    ]})
+    check("NICs shaped, junk dropped", [n["name"] for n in nics], ["enp1s0", "eno1"])
+    check("unplugged NIC adds nothing", fanctl_module.link_capacity(nics), 10000)
+    nics[1].update(up=True, speed_mbit=1000)
+    check("plugging it in grows the scale", fanctl_module.link_capacity(nics), 11000)
+    check("older fan app reports no NICs", fanctl_module.shape_nics({}), None)
+    check("no capacity without NICs", fanctl_module.link_capacity(None), None)
+    check("no capacity with every NIC down",
+          fanctl_module.link_capacity([{"name": "a", "up": False, "speed_mbit": 1000}]), None)
+    check("detection on by default", cfg.normalize({})["proxmox"]["link_auto"], True)
+    check("detection can be turned off",
+          cfg.normalize({"proxmox": {"link_auto": False}})["proxmox"]["link_auto"], False)
+
 
 def test_due_and_history():
     print("scheduling and history")
