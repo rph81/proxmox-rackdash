@@ -417,6 +417,10 @@ class Dial {
     // degree sign stays attached, as temperatures are normally written.
     const gap = !below && shownUnit.trim() === '%' ? '3' : '0';
     if (this.unitText.getAttribute('dx') !== gap) this.unitText.setAttribute('dx', gap);
+    // At half the digits' size on their baseline, a degree sign floats at
+    // mid-height; lift it so its top lines up with the top of the digits.
+    const lift = !below && shownUnit.trim() === '°' ? '-7' : '0';
+    if (this.unitText.getAttribute('dy') !== lift) this.unitText.setAttribute('dy', lift);
     this.unitBelow.textContent = below ? shownUnit.trim() : '';
     const valueY = below ? '49' : '53';
     if (this.valueText.getAttribute('y') !== valueY) this.valueText.setAttribute('y', valueY);

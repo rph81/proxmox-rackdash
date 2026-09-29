@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.6.3]
+
+### Changed
+- The degree sign on temperature dials sat at mid-height beside the digits.
+  It is now raised so its top lines up with the top of the number.
+
 ## [1.6.2]
 
 ### Changed
