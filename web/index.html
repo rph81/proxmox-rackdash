@@ -341,6 +341,51 @@
       </div>
 
       <div class="panel">
+        <div class="panel-head"><h2>Screen care</h2><span class="tag" id="set-care-tag"></span></div>
+        <label class="check"><input type="checkbox" id="set-pixel-shift"> Pixel shift (move everything a few pixels every 2 minutes)</label>
+        <div class="row">
+          <div class="field">
+            <label for="set-saver-after">Screensaver after idle (min)</label>
+            <input type="number" id="set-saver-after" min="0" max="1440" step="1">
+          </div>
+          <div class="field">
+            <label>Screensaver shows</label>
+            <div class="seg" id="set-saver-style">
+              <button type="button" data-style="status">Status</button>
+              <button type="button" data-style="black">Black</button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="set-sleep-from">Black screen from</label>
+            <input type="time" id="set-sleep-from">
+          </div>
+          <div class="field">
+            <label for="set-sleep-to">until</label>
+            <input type="time" id="set-sleep-to">
+          </div>
+        </div>
+        <div class="row refresh-row">
+          <div class="field">
+            <label for="set-refresh-mins">Screen refresh</label>
+            <select id="set-refresh-mins">
+              <option value="10">10 minutes</option>
+              <option value="30" selected>30 minutes</option>
+              <option value="60">60 minutes</option>
+            </select>
+          </div>
+          <button type="button" id="set-refresh-run">Run now</button>
+        </div>
+        <p class="hint">
+          Against LCD image retention: nothing stays on the same pixels for long.
+          A tap wakes the screensaver without pressing what is under it. Screen
+          refresh slowly cycles full-screen colours to fade retention that is
+          already visible; tap to stop. Leave both times blank for no sleep hours.
+        </p>
+      </div>
+
+      <div class="panel">
         <div class="panel-head"><h2>Sources</h2></div>
         <div class="kv" id="set-sources"></div>
         <label class="field-label">Sensors available</label>
@@ -392,6 +437,18 @@
 
 <div class="range-menu" id="range-menu" role="menu" hidden></div>
 <div id="dim" hidden></div>
+<!-- Screensaver: black, with a small status card that drifts so no pixel
+     holds the same image. A tap anywhere wakes it and is not passed on. -->
+<div id="saver" hidden>
+  <div class="saver-card" id="saver-card">
+    <div class="saver-clock" id="saver-clock">--:--</div>
+    <div class="saver-line"><span class="dot" id="saver-dot"></span><span id="saver-text"></span></div>
+  </div>
+</div>
+<!-- Screen refresh: slow full-screen colour cycle for retention already there. -->
+<div id="refresh" hidden>
+  <div class="refresh-note" id="refresh-note"></div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="/app.js"></script>

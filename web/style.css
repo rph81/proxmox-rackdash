@@ -815,6 +815,53 @@ input:focus, select:focus, button:focus-visible {
   transition: opacity .6s ease; pointer-events: none;
 }
 
+/* ------------------------------------------------------------ screen care */
+
+/* Pixel shift: the two halves of the layout move together by a few pixels.
+   Slow enough that the eye reads it as stillness. */
+#nav, #main {
+  transform: translate(var(--shift-x, 0px), var(--shift-y, 0px));
+  transition: transform 3s ease-in-out;
+}
+
+/* Unlike #dim this catches the wake tap, so it never reaches the page below. */
+#saver, #refresh {
+  position: fixed; inset: 0; z-index: 55; background: #000;
+  opacity: 0; transition: opacity 1.2s ease;
+}
+#saver.on, #refresh.on { opacity: 1; }
+body.kiosk #saver, body.kiosk #refresh { cursor: none; }
+
+/* The card glides between random spots over a long transition, so it is
+   always moving a little and never parks on the same pixels. */
+.saver-card {
+  position: absolute; left: 0; top: 0;
+  transform: translate(var(--card-x, 40px), var(--card-y, 40px));
+  transition: transform 28s linear;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  color: rgba(255, 255, 255, .5);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+.saver-clock { font-size: 44px; font-weight: 300; letter-spacing: .04em; }
+.saver-line { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.saver-line .dot { opacity: .8; }
+#saver.alert .saver-card { color: rgba(248, 81, 73, .8); }
+#saver.black .saver-card { display: none; }
+
+/* Screen refresh: full-screen colours eased from one to the next, never
+   flashed. The note drifts too, so the one static thing moves. */
+#refresh { transition: opacity 1.2s ease, background-color 6s ease-in-out; }
+.refresh-note {
+  position: absolute; left: 50%; bottom: 14px;
+  transform: translateX(calc(-50% + var(--note-x, 0px)));
+  transition: transform 20s linear;
+  padding: 4px 10px; border-radius: 6px; font-size: 12px;
+  background: rgba(0, 0, 0, .55); color: rgba(255, 255, 255, .8);
+}
+.refresh-row { align-items: flex-end; }
+.refresh-row > button { height: 32px; }
+
 .toast {
   position: fixed; bottom: 14px; left: 50%; transform: translate(-50%, 70px);
   background: var(--panel); border: 1px solid var(--line); color: var(--text);

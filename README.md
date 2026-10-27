@@ -128,6 +128,23 @@ temperature sensors were picked up from the fan controller.
 | **Home Assistant** | A Home Assistant dashboard, full-page. Only shown once a URL is set; see below. |
 | **Settings** | Themes, accent, dial colour ramps, screen behaviour and source status. |
 
+### Screen care
+
+LCD panels develop image retention when one high-contrast picture sits on the
+same pixels for weeks, which is exactly what a rack dashboard does. Settings →
+Screen care has:
+
+- **Pixel shift** (on by default) — the layout moves a few pixels every two
+  minutes.
+- **Screensaver** after 10 minutes idle — a drifting clock and one-line health
+  status on black, red when something is wrong. The waking tap is not passed on.
+- **Sleep hours** — plain black between two times; a tap shows the dashboard
+  for two minutes.
+- **Screen refresh** — slow full-screen colour cycling for 10-60 minutes to
+  fade retention that is already there.
+
+These work on the picture only: a black LCD still has its backlight on.
+
 ### Home Assistant page
 
 Set the dashboard URL in Settings → Home Assistant, in the config file

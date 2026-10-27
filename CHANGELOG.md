@@ -3,6 +3,26 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.9.0]
+
+### Added
+- **Screen care, against LCD image retention.** A rack dashboard holds the
+  same high-contrast layout on the same pixels for weeks, which is what causes
+  retention. Four parts, in a new Screen care panel in Settings:
+  - **Pixel shift** (on by default): the whole layout moves by 1-3 px every
+    two minutes along a small orbit, eased over three seconds.
+  - **Screensaver** after 10 minutes idle (adjustable, 0 turns it off): black,
+    with a dim clock and a one-line status (host, CPU, hottest sensor, guests
+    up) that glides continuously around the screen. It turns red when the host
+    is unreachable or a sensor reaches the top temperature stop. The tap that
+    wakes it is swallowed, so it never presses what is underneath.
+  - **Sleep hours**: a plain black screen between two times (may wrap past
+    midnight). A tap shows the dashboard for two minutes.
+  - **Screen refresh**: 10, 30 or 60 minutes of slow full-screen colour
+    cycling (white, red, green, blue, black, eased, never flashed) to fade
+    retention that is already visible. Tap to stop.
+- None of this changes the backlight, which the browser cannot reach over HDMI.
+
 ## [1.8.0]
 
 ### Added

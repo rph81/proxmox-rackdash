@@ -103,6 +103,14 @@ def default_config() -> dict:
             "rotate_seconds": 0,           # >0 cycles pages automatically
             "dim_after": 0,                # >0 dims the screen after N seconds idle
             "dim_level": 25,               # percent brightness of the dim overlay
+            # Screen care, against LCD image retention. A dashboard that holds
+            # the same high-contrast layout on the same pixels for weeks is
+            # exactly what causes it, so the layout moves and rests.
+            "pixel_shift": True,           # nudge the whole UI a few px every few minutes
+            "saver_after": 600,            # seconds idle before the screensaver; 0 = never
+            "saver_style": "status",       # status (drifting clock + health) | black
+            "sleep_from": "",              # HH:MM; screen black between these times
+            "sleep_to": "",
             "clock_24h": True,
             "show_vm_cpu": True,
             "show_pi": True,             # the Pi's own temp/cpu/gpu in the header
@@ -200,6 +208,12 @@ def _normalize_url(value: Any, fallback: str = "") -> str:
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     return url.rstrip("/")
+
+
+def _clock_time(value: Any) -> str:
+    """A 24-hour HH:MM time of day, or blank."""
+    text = _text(value, "", 5)
+    return text if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", text) else ""
 
 
 def _page_url(value: Any) -> str:
@@ -300,6 +314,11 @@ def normalize(raw: Any) -> dict:
     ui["rotate_seconds"] = _int(ui_raw.get("rotate_seconds"), 0, 3600, ui["rotate_seconds"])
     ui["dim_after"] = _int(ui_raw.get("dim_after"), 0, 86400, ui["dim_after"])
     ui["dim_level"] = _int(ui_raw.get("dim_level"), 0, 90, ui["dim_level"])
+    ui["pixel_shift"] = bool(ui_raw.get("pixel_shift", ui["pixel_shift"]))
+    ui["saver_after"] = _int(ui_raw.get("saver_after"), 0, 86400, ui["saver_after"])
+    ui["saver_style"] = _one_of(ui_raw.get("saver_style"), ("status", "black"), ui["saver_style"])
+    ui["sleep_from"] = _clock_time(ui_raw.get("sleep_from"))
+    ui["sleep_to"] = _clock_time(ui_raw.get("sleep_to"))
     ui["clock_24h"] = bool(ui_raw.get("clock_24h", ui["clock_24h"]))
     ui["show_pi"] = bool(ui_raw.get("show_pi", ui["show_pi"]))
     ui["header_scale"] = _int(ui_raw.get("header_scale"), 100, 200, ui["header_scale"])

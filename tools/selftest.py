@@ -114,6 +114,21 @@ def test_config_normalisation():
                      {"ui": {"theme": "bambu"}})["ui"]
     check("changing theme keeps the backdrop", kept["pattern"], "circuit")
 
+    # Screen care: on by default, because retention builds up before anyone
+    # thinks to open Settings.
+    check("pixel shift on by default", base["ui"]["pixel_shift"], True)
+    check("screensaver after ten minutes", base["ui"]["saver_after"], 600)
+    check("no sleep hours by default", (base["ui"]["sleep_from"], base["ui"]["sleep_to"]), ("", ""))
+    care = cfg.normalize({"ui": {"saver_after": 10 ** 9, "saver_style": "rainbow",
+                                 "sleep_from": "23:00", "sleep_to": "7:00"}})["ui"]
+    check("saver delay clamped", care["saver_after"], 86400)
+    check("unknown saver style falls back", care["saver_style"], "status")
+    check("sleep time kept", care["sleep_from"], "23:00")
+    check("unpadded time refused", care["sleep_to"], "")
+    check("impossible time refused",
+          cfg.normalize({"ui": {"sleep_from": "24:30"}})["ui"]["sleep_from"], "")
+    check("saver can be turned off", cfg.normalize({"ui": {"saver_after": 0}})["ui"]["saver_after"], 0)
+
     # The Home Assistant URL becomes an iframe src and a CSP source.
     ha = lambda url: cfg.normalize({"homeassistant": {"url": url}})["homeassistant"]["url"]
     check("home assistant off by default", base["homeassistant"]["url"], "")

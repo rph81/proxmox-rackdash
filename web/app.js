@@ -2262,6 +2262,22 @@ function renderSettings() {
   document.getElementById('set-rotate').value = ui.rotate_seconds;
   document.getElementById('set-dim-after').value = ui.dim_after;
   document.getElementById('set-dim-level').value = ui.dim_level;
+  // Settings re-renders on every poll; never overwrite a field mid-edit.
+  const fill = (id, value) => {
+    const input = document.getElementById(id);
+    if (document.activeElement !== input) input.value = value;
+  };
+  document.getElementById('set-pixel-shift').checked = ui.pixel_shift;
+  fill('set-saver-after', Math.round(ui.saver_after / 60));
+  fill('set-sleep-from', ui.sleep_from);
+  fill('set-sleep-to', ui.sleep_to);
+  document.querySelectorAll('#set-saver-style button').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.style === ui.saver_style));
+  });
+  const careParts = [ui.pixel_shift && 'shift',
+    ui.saver_after > 0 && `saver ${Math.round(ui.saver_after / 60)}m`,
+    ui.sleep_from && ui.sleep_to && `sleep ${ui.sleep_from}–${ui.sleep_to}`].filter(Boolean);
+  document.getElementById('set-care-tag').textContent = careParts.join(' · ') || 'off';
   document.getElementById('set-temp-min').value = ui.temp_min;
   document.getElementById('set-temp-max').value = ui.temp_max;
   document.getElementById('set-animate').checked = ui.animate;
@@ -2563,6 +2579,19 @@ function bindSettings() {
   number('set-rotate', (v) => patchUi({ rotate_seconds: v }));
   number('set-dim-after', (v) => patchUi({ dim_after: v }));
   number('set-dim-level', (v) => patchUi({ dim_level: v }));
+  number('set-saver-after', (v) => patchUi({ saver_after: Math.max(0, Math.round(v * 60)) }));
+  for (const [id, key] of [['set-sleep-from', 'sleep_from'], ['set-sleep-to', 'sleep_to']]) {
+    document.getElementById(id).addEventListener('change', (event) => {
+      patchUi({ [key]: event.target.value });
+    });
+  }
+  document.getElementById('set-saver-style').addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (button && button.dataset.style) patchUi({ saver_style: button.dataset.style });
+  });
+  document.getElementById('set-refresh-run').addEventListener('click', () => {
+    startRefresh(Number(document.getElementById('set-refresh-mins').value));
+  });
   number('set-temp-min', (v) => patchUi({ temp_min: v }));
   number('set-temp-max', (v) => patchUi({ temp_max: v }));
   number('set-link', (v) => {
@@ -2581,6 +2610,7 @@ function bindSettings() {
   check('set-chart-fill', (v) => patchUi({ chart_fill: v }));
   check('set-clock24', (v) => patchUi({ clock_24h: v }));
   check('set-show-pi', (v) => patchUi({ show_pi: v }));
+  check('set-pixel-shift', (v) => patchUi({ pixel_shift: v }));
   check('set-link-auto', (v) => {
     state.config.proxmox.link_auto = v;
     saveConfig({ proxmox: { link_auto: v } }).then(() => poll()).catch(() => {});
@@ -2651,6 +2681,177 @@ function tickIdle() {
     const next = order[(order.indexOf(state.page) + 1) % order.length];
     showPage(next);
   }
+  tickCare();
+}
+
+/* ------------------------------------------------------------ screen care */
+
+// LCD image retention comes from one high-contrast picture held on the same
+// pixels for weeks, which is exactly what a rack dashboard does. So the
+// layout drifts a few pixels, an idle screen hands over to a moving
+// screensaver, sleep hours go black, and a refresh cycle can fade what is
+// already there. None of this touches the backlight: the panel is driven
+// over HDMI and the browser has no way to reach it.
+
+// A closed loop of small offsets, visited one step every two minutes.
+const SHIFT_ORBIT = [[0, 0], [2, 0], [2, 2], [0, 2], [-2, 2], [-2, 0], [-2, -2], [0, -2],
+                     [2, -2], [3, 1], [-1, 3], [-3, -1], [1, -3]];
+const SHIFT_EVERY_MS = 120000;
+const NIGHT_IDLE_MS = 120000;     // a tap in sleep hours shows the dashboard this long
+const CARD_MOVE_MS = 25000;       // shorter than the 28s glide, so the card never stops
+const REFRESH_COLOURS = ['#ffffff', '#ff0000', '#00ff00', '#0000ff', '#000000'];
+const REFRESH_STEP_MS = 12000;    // 6s ease into each colour, then 6s holding it
+
+const care = { shiftAt: 0, shiftIndex: 0, saver: null, cardAt: 0, refresh: null };
+
+function applyShift([x, y]) {
+  const root = document.documentElement.style;
+  root.setProperty('--shift-x', `${x}px`);
+  root.setProperty('--shift-y', `${y}px`);
+}
+
+const minutesOfDay = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+};
+
+function inSleepHours(ui, date) {
+  if (!ui.sleep_from || !ui.sleep_to || ui.sleep_from === ui.sleep_to) return false;
+  const now = date.getHours() * 60 + date.getMinutes();
+  const from = minutesOfDay(ui.sleep_from);
+  const to = minutesOfDay(ui.sleep_to);
+  // 23:00 to 07:00 wraps past midnight; 01:00 to 06:00 does not.
+  return from < to ? now >= from && now < to : now >= from || now < to;
+}
+
+function tickCare() {
+  const ui = state.config.ui;
+  const now = Date.now();
+
+  if (ui.pixel_shift && now - care.shiftAt > SHIFT_EVERY_MS) {
+    care.shiftAt = now;
+    care.shiftIndex = (care.shiftIndex + 1) % SHIFT_ORBIT.length;
+    applyShift(SHIFT_ORBIT[care.shiftIndex]);
+  } else if (!ui.pixel_shift && care.shiftIndex !== 0) {
+    care.shiftIndex = 0;
+    applyShift([0, 0]);
+  }
+
+  if (care.refresh) {
+    tickRefresh(now);
+    return;
+  }
+
+  const idle = now - state.lastTouch;
+  let want = null;
+  if (inSleepHours(ui, new Date(now)) && idle > NIGHT_IDLE_MS) want = 'night';
+  else if (ui.saver_after > 0 && idle > ui.saver_after * 1000) want = 'idle';
+  setSaver(want);
+  if (care.saver) {
+    updateSaverCard();
+    if (now - care.cardAt > CARD_MOVE_MS) moveSaverCard();
+  }
+}
+
+function setSaver(kind) {
+  if (kind === care.saver) return;
+  care.saver = kind;
+  const saver = document.getElementById('saver');
+  if (kind) {
+    saver.classList.toggle('black', kind === 'night' || state.config.ui.saver_style === 'black');
+    saver.hidden = false;
+    updateSaverCard();
+    moveSaverCard();
+    requestAnimationFrame(() => saver.classList.add('on'));
+  } else {
+    // It stays in place, catching taps, until the fade is over: a tap that
+    // lands mid-fade must still not reach the page.
+    saver.classList.remove('on');
+    setTimeout(() => { if (!care.saver) saver.hidden = true; }, 1200);
+  }
+}
+
+function moveSaverCard() {
+  care.cardAt = Date.now();
+  const card = document.getElementById('saver-card');
+  const x = Math.random() * Math.max(0, innerWidth - card.offsetWidth - 20) + 10;
+  const y = Math.random() * Math.max(0, innerHeight - card.offsetHeight - 20) + 10;
+  card.style.setProperty('--card-x', `${Math.round(x)}px`);
+  card.style.setProperty('--card-y', `${Math.round(y)}px`);
+}
+
+function updateSaverCard() {
+  const snapshot = state.snapshot || {};
+  const ui = state.config.ui;
+  const pve = snapshot.proxmox || {};
+  const system = snapshot.system || {};
+  const guests = snapshot.guests || [];
+  const hottest = ((snapshot.temps || {}).sensors || [])
+    .filter((s) => isNum(s.value)).sort((a, b) => b.value - a.value)[0];
+  const hotAt = ui.temp_stops.length ? ui.temp_stops[ui.temp_stops.length - 1][0] : 80;
+
+  document.getElementById('saver-clock').textContent = fmtClock(new Date(), ui.clock_24h);
+  document.getElementById('saver-dot').className = `dot ${pve.ok ? 'on' : 'off'}`;
+  const parts = [pve.node || 'proxmox'];
+  if (!pve.ok) parts.push('unreachable');
+  if (isNum(system.cpu)) parts.push(`CPU ${Math.round(system.cpu)}%`);
+  if (hottest) parts.push(`${Math.round(hottest.value)}°`);
+  if (guests.length) parts.push(`${guests.filter((g) => g.status === 'running').length}/${guests.length} up`);
+  document.getElementById('saver-text').textContent = parts.join(' · ');
+  // Still a status display: anything wrong turns the card red.
+  document.getElementById('saver').classList.toggle('alert',
+    !pve.ok || (hottest && hottest.value >= hotAt));
+}
+
+function startRefresh(minutes) {
+  setSaver(null);
+  care.refresh = { until: Date.now() + minutes * 60000, step: -1, stepAt: 0, noteAt: 0 };
+  const refresh = document.getElementById('refresh');
+  refresh.style.backgroundColor = '#000';
+  refresh.hidden = false;
+  requestAnimationFrame(() => refresh.classList.add('on'));
+  tickRefresh(Date.now());
+}
+
+function stopRefresh() {
+  care.refresh = null;
+  state.lastTouch = Date.now();
+  const refresh = document.getElementById('refresh');
+  refresh.classList.remove('on');
+  setTimeout(() => { if (!care.refresh) refresh.hidden = true; }, 1200);
+}
+
+function tickRefresh(now) {
+  const run = care.refresh;
+  if (now >= run.until) { stopRefresh(); return; }
+  const refresh = document.getElementById('refresh');
+  if (now - run.stepAt >= REFRESH_STEP_MS) {
+    run.stepAt = now;
+    run.step += 1;
+    refresh.style.backgroundColor = REFRESH_COLOURS[run.step % REFRESH_COLOURS.length];
+  }
+  const left = Math.ceil((run.until - now) / 1000);
+  const note = document.getElementById('refresh-note');
+  note.textContent = `Screen refresh · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left · tap to stop`;
+  if (now - run.noteAt > 18000) {
+    run.noteAt = now;
+    const room = Math.max(0, innerWidth / 2 - note.offsetWidth / 2 - 20);
+    note.style.setProperty('--note-x', `${Math.round((Math.random() * 2 - 1) * room)}px`);
+  }
+}
+
+function bindScreenCare() {
+  // Waking takes the whole tap: pointerdown, pointerup and click all land on
+  // the overlay, so nothing underneath is pressed by the tap that woke it.
+  document.getElementById('saver').addEventListener('click', (event) => {
+    event.stopPropagation();
+    state.lastTouch = Date.now();
+    setSaver(null);
+  });
+  document.getElementById('refresh').addEventListener('click', (event) => {
+    event.stopPropagation();
+    stopRefresh();
+  });
 }
 
 /* ---------------------------------------------------------------- polling */
@@ -2796,6 +2997,7 @@ function main() {
   }
   buildNav();
   bindSettings();
+  bindScreenCare();
 
   for (const event of ['pointerdown', 'touchstart', 'keydown', 'wheel']) {
     window.addEventListener(event, noteActivity, { passive: true });
