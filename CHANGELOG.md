@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.9.1]
+
+### Changed
+- **Python 3.11 is the minimum.** The Pi 5 needs Raspberry Pi OS Bookworm or
+  newer, which ship 3.11+, and 3.9 is end-of-life: GitHub's current runners
+  no longer provide it, which failed the 1.9.0 test run before any test ran.
+  The installer now checks for 3.11, and the test matrix is 3.11, 3.12 and
+  3.13 with fail-fast off, so one version cannot cancel the others.
+
 ## [1.9.0]
 
 ### Added
